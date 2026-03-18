@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 
 // ── CONFIG ── swap LAMBDA_URL with your AWS Lambda endpoint in production
 const LAMBDA_URL = import.meta.env.VITE_LAMBDA_URL;
-const MODEL = "claude-sonnet-4-20250514";
+const MODEL = "gemini-1.5-flash"; // Switched to Gemini
 
 const CONDITIONS = [
  { name: "الملاريا", en: "Malaria", icon: "🦟",
