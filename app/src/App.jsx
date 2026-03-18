@@ -128,15 +128,29 @@ export default function App() {
  setLoading(true);
  setResult(null);
  try {
- const res = await fetch(LAMBDA_URL, {
- method: "POST",
- headers: { "Content-Type": "application/json" },
- body: JSON.stringify({ model: MODEL, max_tokens: 1000, messages: [{ role: "user", content: buildPrompt() }] }),
- });
- const data = await res.json();
- setResult(data.content?.find(b => b.type === "text")?.text || "حدث خطأ في الاستجابة.");
- } catch {
- setResult("❌ تعذّر الاتصال بالخادم. تحقق من الاتصال بالإنترنت وحاول مرة أخرى.");
+   // Try Arabic.ai first
+   let res = await fetch(LAMBDA_URL, {
+     method: "POST",
+     headers: { "Content-Type": "application/json" },
+     body: JSON.stringify({ provider: "arabicai", model: MODEL, max_tokens: 1000, messages: [{ role: "user", content: buildPrompt() }] }),
+   });
+
+   if (!res.ok) throw new Error("Arabic.ai request failed");
+   const data = await res.json();
+   setResult(data.content?.find(b => b.type === "text")?.text || "حدث خطأ في استجابة Arabic.ai.");
+ } catch (err) {
+   console.warn("Retrying with Anthropic...", err);
+   try {
+     const res = await fetch(LAMBDA_URL, {
+       method: "POST",
+       headers: { "Content-Type": "application/json" },
+       body: JSON.stringify({ provider: "anthropic", model: MODEL, max_tokens: 1000, messages: [{ role: "user", content: buildPrompt() }] }),
+     });
+     const data = await res.json();
+     setResult(data.content?.find(b => b.type === "text")?.text || "حدث خطأ في استجابة Anthropic.");
+   } catch (err2) {
+     setResult("❌ تعذّر الاتصال بكلا الموفرين. تحقق من الاتصال بالإنترنت.");
+   }
  }
  setLoading(false);
  setPage("diagnosis");
