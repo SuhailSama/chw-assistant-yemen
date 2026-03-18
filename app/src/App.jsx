@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 // ── CONFIG ── swap LAMBDA_URL with your AWS Lambda endpoint in production
 const LAMBDA_URL = import.meta.env.VITE_LAMBDA_URL;
@@ -89,6 +89,18 @@ export default function App() {
  const [refForm, setRefForm] = useState(null);
  const [visitForm, setVisitForm] = useState(null);
  const [condition, setCondition] = useState(null);
+ const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+ useEffect(() => {
+   const handleOnline = () => setIsOnline(true);
+   const handleOffline = () => setIsOnline(false);
+   window.addEventListener('online', handleOnline);
+   window.addEventListener('offline', handleOffline);
+   return () => {
+     window.removeEventListener('online', handleOnline);
+     window.removeEventListener('offline', handleOffline);
+   };
+ }, []);
 
  const p = (k, v) => setPatient(prev => ({ ...prev, [k]: v }));
  const today = () => new Date().toLocaleDateString("ar-SA");
@@ -124,36 +136,45 @@ export default function App() {
 
 تنبيه: هذا موقف ميداني طارئ. كن دقيقاً وعملياً وواضحاً. نبّه بشكل صريح إذا كانت الحالة تستدعي إحالة عاجلة.`;
 
- const analyze = async () => {
- setLoading(true);
- setResult(null);
- try {
-   // Try Arabic.ai first
-   let res = await fetch(LAMBDA_URL, {
-     method: "POST",
-     headers: { "Content-Type": "application/json" },
-     body: JSON.stringify({ provider: "arabicai", model: MODEL, max_tokens: 1000, messages: [{ role: "user", content: buildPrompt() }] }),
-   });
-
-   if (!res.ok) throw new Error("Arabic.ai request failed");
-   const data = await res.json();
-   setResult(data.content?.find(b => b.type === "text")?.text || "حدث خطأ في استجابة Arabic.ai.");
- } catch (err) {
-   console.warn("Retrying with Anthropic...", err);
-   try {
-     const res = await fetch(LAMBDA_URL, {
-       method: "POST",
-       headers: { "Content-Type": "application/json" },
-       body: JSON.stringify({ provider: "anthropic", model: MODEL, max_tokens: 1000, messages: [{ role: "user", content: buildPrompt() }] }),
-     });
-     const data = await res.json();
-     setResult(data.content?.find(b => b.type === "text")?.text || "حدث خطأ في استجابة Anthropic.");
-   } catch (err2) {
-     setResult("❌ تعذّر الاتصال بكلا الموفرين. تحقق من الاتصال بالإنترنت.");
+ const fetchWithRetry = async (provider, attempts = 2) => {
+   for (let i = 0; i < attempts; i++) {
+     const controller = new AbortController();
+     const timeoutId = setTimeout(() => controller.abort(), 15000);
+     try {
+       const res = await fetch(LAMBDA_URL, {
+         method: "POST",
+         headers: { "Content-Type": "application/json" },
+         body: JSON.stringify({ provider, model: MODEL, max_tokens: 1000, messages: [{ role: "user", content: buildPrompt() }] }),
+         signal: controller.signal
+       });
+       clearTimeout(timeoutId);
+       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+       return await res.json();
+     } catch (err) {
+       clearTimeout(timeoutId);
+       if (i === attempts - 1) throw err;
+       await new Promise(r => setTimeout(r, 2000));
+     }
    }
- }
- setLoading(false);
- setPage("diagnosis");
+ };
+
+ const analyze = async () => {
+   setLoading(true);
+   setResult(null);
+   try {
+     const data = await fetchWithRetry("arabicai");
+     setResult(data.content?.find(b => b.type === "text")?.text || "حدث خطأ في استجابة Arabic.ai.");
+   } catch (err) {
+     console.warn("Retrying with Anthropic...", err);
+     try {
+       const data = await fetchWithRetry("anthropic");
+       setResult(data.content?.find(b => b.type === "text")?.text || "حدث خطأ في استجابة Anthropic.");
+     } catch (err2) {
+       setResult(`❌ ${err2.message === 'The user aborted a request.' ? 'انتهت المهلة (15 ثانية)' : err2.message || 'خطأ غير معروف'}. تحقق من الاتصال.`);
+     }
+   }
+   setLoading(false);
+   setPage("diagnosis");
  };
 
  // ── DISCLAIMER ──────────────────────────────────────────
@@ -188,6 +209,12 @@ export default function App() {
  return (
  <div dir="rtl" className="min-h-screen bg-gray-50 flex flex-col max-w-md mx-auto relative">
 
+ {!isOnline && (
+   <div className="bg-red-600 text-white text-center py-2 text-xs font-bold z-30 sticky top-0">
+     أنت غير متصل — التشخيص غير متاح، التثقيف الصحي يعمل
+   </div>
+ )}
+
  {/* Header */}
  <header className="bg-green-700 text-white px-4 py-3 flex items-center justify-between sticky top-0 z-20 shadow-md">
  <div>
@@ -195,7 +222,9 @@ export default function App() {
  <p className="text-green-300 text-xs">أداة دعم طبي ميداني</p>
  </div>
  <div className="flex items-center gap-2">
- <span className="text-xs bg-green-600 px-2 py-0.5 rounded-full text-green-200">🟢 متصل</span>
+ <span className={`text-xs px-2 py-0.5 rounded-full ${isOnline ? "bg-green-600 text-green-200" : "bg-red-500 text-red-100"}`}>
+   {isOnline ? "🟢 متصل" : "🔴 غير متصل"}
+ </span>
  <span className="text-2xl">🏥</span>
  </div>
  </header>
@@ -243,11 +272,12 @@ export default function App() {
 
  <button
  onClick={analyze}
- disabled={loading || !patient.name || !patient.complaint || !patient.symptoms}
+ disabled={loading || !isOnline || !patient.name || !patient.complaint || !patient.symptoms}
  className="w-full bg-green-600 text-white py-3.5 rounded-xl font-bold text-base disabled:opacity-40 disabled:cursor-not-allowed hover:bg-green-700 active:bg-green-800 transition shadow-sm flex items-center justify-center gap-2"
  >
  {loading ? <><span className="animate-spin inline-block">⏳</span> جارٍ التحليل...</> : "🔬 تحليل وتشخيص"}
  </button>
+ {(!isOnline) && <p className="text-center text-xs text-red-500 font-bold">التشخيص غير متاح في وضع عدم الاتصال</p>}
  {(!patient.name || !patient.complaint || !patient.symptoms) &&
  <p className="text-center text-xs text-gray-400">* يرجى ملء الحقول الإلزامية أولاً</p>}
  </>}
@@ -275,6 +305,12 @@ export default function App() {
  </div>
  </div>
  <div className="text-sm text-gray-700 leading-8 whitespace-pre-wrap">{result}</div>
+ <button 
+  onClick={() => navigator.clipboard.writeText(result)}
+  className="mt-4 w-full text-xs text-gray-500 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50"
+ >
+  نسخ النتائج 📋
+ </button>
  </Card>
  <div className="grid grid-cols-2 gap-3">
  <button
