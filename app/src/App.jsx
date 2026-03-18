@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 
 // ── CONFIG ── swap LAMBDA_URL with your AWS Lambda endpoint in production
 const LAMBDA_URL = import.meta.env.VITE_LAMBDA_URL;
-const MODEL = "gemini-2.5-flash-lite"; // Switched to gemini-2.5-flash-lite
+const MODEL = "gemini-2.0-flash"; // Switched to gemini-2.0-flash
 
 const CONDITIONS = [
  { name: "الملاريا", en: "Malaria", icon: "🦟",
@@ -160,6 +160,21 @@ export default function App() {
    }
  };
 
+ const renderMarkdown = (text) => {
+   if (!text) return null;
+   return text.split('\n').map((line, i) => {
+     const trimmed = line.trim();
+     if (!trimmed) return <br key={i} />;
+     // Headers
+     if (trimmed.includes('###')) return <h3 key={i} className="font-bold text-green-800 text-base mt-4 mb-2 border-b border-green-200 pb-1">{trimmed.replace(/###/g, '').trim()}</h3>;
+     // Bullet points
+     if (trimmed.startsWith('*') || trimmed.startsWith('-')) return <p key={i} className="pr-4 py-0.5 text-gray-700">• {trimmed.replace(/[*|-]/g, '').trim()}</p>;
+     // Bold text
+     const formatted = trimmed.replace(/\*\*(.*?)\*\*/g, '<strong class="text-gray-900">$1</strong>');
+     return <p key={i} className="leading-7 text-gray-700" dangerouslySetInnerHTML={{ __html: formatted }} />;
+   });
+ };
+
  const analyze = async () => {
    setLoading(true);
    setResult(null);
@@ -306,7 +321,9 @@ export default function App() {
  <p className="text-xs text-gray-400">{patient.age} سنة · {patient.sex === "male" ? "ذكر" : "أنثى"} · {patient.complaint}</p>
  </div>
  </div>
- <div className="text-sm text-gray-700 leading-8 whitespace-pre-wrap">{result}</div>
+ <div className="text-sm text-gray-700 leading-8">
+   {renderMarkdown(result)}
+ </div>
  <button 
   onClick={() => navigator.clipboard.writeText(result)}
   className="mt-4 w-full text-xs text-gray-500 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50"
