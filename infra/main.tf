@@ -27,6 +27,26 @@ resource "aws_iam_role_policy_attachment" "lambda_basic" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
+resource "aws_iam_policy" "lambda_ssm" {
+  name = "${var.project_name}-lambda-ssm"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = "ssm:GetParameters"
+      Resource = [
+        aws_ssm_parameter.anthropic_key.arn,
+        aws_ssm_parameter.gemini_key.arn,
+      ]
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_ssm" {
+  role       = aws_iam_role.lambda_exec.name
+  policy_arn = aws_iam_policy.lambda_ssm.arn
+}
+
 resource "aws_lambda_function" "proxy" {
   filename      = "../lambda.zip"
   function_name = "${var.project_name}-proxy"
@@ -35,6 +55,13 @@ resource "aws_lambda_function" "proxy" {
   runtime       = "nodejs20.x"
   memory_size   = 128
   timeout       = 10
+
+  environment {
+    variables = {
+      ANTHROPIC_KEY_PARAM = aws_ssm_parameter.anthropic_key.name
+      GEMINI_KEY_PARAM    = aws_ssm_parameter.gemini_key.name
+    }
+  }
 }
 
 resource "aws_apigatewayv2_api" "api" {
@@ -124,6 +151,13 @@ resource "aws_cloudfront_distribution" "cf" {
 
 resource "aws_ssm_parameter" "anthropic_key" {
   name  = "/${var.project_name}/ANTHROPIC_API_KEY"
+  type  = "SecureString"
+  value = "changeme" # Manually update in AWS Console
+  lifecycle { ignore_changes = [value] }
+}
+
+resource "aws_ssm_parameter" "gemini_key" {
+  name  = "/${var.project_name}/GEMINI_API_KEY"
   type  = "SecureString"
   value = "changeme" # Manually update in AWS Console
   lifecycle { ignore_changes = [value] }
