@@ -85,32 +85,13 @@ export default function App() {
  const p = (k, v) => { setPatient(prev => ({ ...prev, [k]: v })); setValidationErrors([]); };
  const today = () => new Date().toLocaleDateString("ar-SA");
 
- // ── INPUT VALIDATION ─────────────────────────────────────
- const isGibberish = (str) => {
-   if (!str || str.trim().length < 3) return true;
-   const letters = str.replace(/[\s\d\W]/g, "");
-   if (letters.length < 2) return true;
-   // Detect repeated single character spam (e.g. "aaaaaaa", "zzzzzz")
-   const uniqueChars = new Set(str.toLowerCase().replace(/\s/g, ""));
-   if (uniqueChars.size < 2) return true;
-   return false;
- };
-
+ // ── INPUT VALIDATION — only blocks truly impossible values ──
  const validateInputs = () => {
    const errors = [];
    const age = Number(patient.age);
 
-   if (isGibberish(patient.name))
-     errors.push("الاسم يبدو غير صحيح — يرجى إدخال الاسم الكامل للمريض");
-
    if (!patient.age || isNaN(age) || age < 0 || age > 120)
      errors.push("العمر يجب أن يكون رقماً بين 0 و 120");
-
-   if (!patient.complaint || patient.complaint.trim().length < 5)
-     errors.push("الشكوى الرئيسية قصيرة جداً — صِف الشكوى بوضوح");
-
-   if (isGibberish(patient.symptoms) || patient.symptoms.trim().length < 10)
-     errors.push("الأعراض غير كافية — صِف الأعراض بتفصيل أكثر (10 أحرف على الأقل)");
 
    if (patient.temp) {
      const t = Number(patient.temp);
