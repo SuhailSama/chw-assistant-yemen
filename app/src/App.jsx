@@ -1,43 +1,10 @@
 import { useState, useEffect } from "react";
+import { CONDITIONS } from "./data/conditions";
+import { MEDICINES, MEDICINE_CATEGORIES } from "./data/medicines";
 
 // ── CONFIG ── swap LAMBDA_URL with your AWS Lambda endpoint in production
 const LAMBDA_URL = import.meta.env.VITE_LAMBDA_URL;
 const MODEL = "gemini-2.5-flash-lite";
-
-const CONDITIONS = [
- { name: "الملاريا", en: "Malaria", icon: "🦟",
- symptoms: "حمى متقطعة، قشعريرة، صداع شديد، تعرق، آلام عضلية وهزال",
- treatment: "مضادات الملاريا حسب البروتوكول المحلي (ACT)، راحة تامة، سوائل وفيرة، خافض حرارة",
- refer: "طفل أقل من 5 سنوات، فقدان الوعي، تشنجات، حمى فوق 40°C، قيء مستمر يمنع الدواء" },
- { name: "الإسهال والجفاف", en: "Diarrhea & Dehydration", icon: "💧",
- symptoms: "براز سائل متكرر، غثيان وقيء، ضعف عام، عطش شديد، جفاف الفم",
- treatment: "محلول معالجة الجفاف الفموي (ORS) فوراً — كوب كل إسهالة، استمرار الرضاعة للرضع",
- refer: "دم في البراز، جفاف شديد (عيون غائرة، جلد لا يرتد)، رضيع أقل من 6 أشهر، إغماء" },
- { name: "التهابات الجهاز التنفسي", en: "Respiratory Infections", icon: "🫁",
- symptoms: "سعال، حمى، ضيق تنفس، زكام، ألم حلق، بحة صوت",
- treatment: "راحة، سوائل دافئة، مسكنات الألم، استنشاق بخار الماء، العسل للسعال (أكبر من سنة)",
- refer: "ضيق تنفس شديد، زرقة الشفاه أو الأظافر، حمى فوق 39°C أكثر من 3 أيام، طفل صغير" },
- { name: "سوء التغذية", en: "Malnutrition", icon: "🍎",
- symptoms: "نقص واضح في الوزن، وذمة في القدمين والوجه، شعر هش وخفيف، إرهاق وخمول",
- treatment: "RUTF (الغذاء العلاجي الجاهز)، تغذية تدريجية ومتكررة، متابعة منتظمة لتسجيل الوزن",
- refer: "سوء تغذية حاد مع مضاعفات طبية، وذمة في الوجه، فقدان الشهية التام، طفل أقل من 6 أشهر" },
- { name: "الكوليرا", en: "Cholera", icon: "⚠️",
- symptoms: "إسهال مائي غزير مفاجئ (كماء الأرز)، قيء، جفاف سريع جداً، تقلصات عضلية",
- treatment: "ORS فوري وغزير جداً، عزل المريض، تعقيم كل ما لمسه، إبلاغ السلطات الصحية",
- refer: "فوري دائماً — الكوليرا حالة طوارئ صحية عامة تستلزم إحالة عاجلة وإبلاغ السلطات" },
- { name: "الجروح والإصابات", en: "Wounds & Injuries", icon: "🩹",
- symptoms: "جروح مفتوحة، نزيف، كسور محتملة، تورم وكدمات، ألم شديد موضعي",
- treatment: "إيقاف النزيف بالضغط المباشر، تنظيف الجرح بماء نظيف وصابون، ضمادة معقمة، تجنب تحريك الطرف المشتبه بكسره",
- refer: "كسور مشتبه بها، جروح عميقة تحتاج خياطة، نزيف لا يتوقف بعد 10 دقائق، إصابة رأس أو عمود فقري" },
- { name: "ارتفاع ضغط الدم", en: "Hypertension", icon: "❤️",
- symptoms: "صداع شديد في مؤخرة الرأس، دوار، ضبابية في الرؤية، خفقان، نزيف من الأنف",
- treatment: "راحة تامة، تجنب الملح والإجهاد، قياس الضغط بانتظام، الأدوية إن وُجدت",
- refer: "ضغط فوق 180/110، صداع شديد مع اضطراب رؤية أو إغماء، مريضة حامل مع ارتفاع الضغط" },
- { name: "الحمى غير المحددة", en: "Fever of Unknown Origin", icon: "🌡️",
- symptoms: "ارتفاع درجة الحرارة فوق 38°C، قشعريرة، تعب عام، فقدان الشهية",
- treatment: "خافض الحرارة (باراسيتامول)، سوائل وفيرة، راحة، رصد الحرارة كل 4 ساعات",
- refer: "حمى فوق 39.5°C، مستمرة أكثر من 3 أيام بلا سبب واضح، مصحوبة بطفح جلدي أو تصلب رقبة أو تشنجات" },
-];
 
 const URGENCY = {
  urgent: { label: "عاجل 🔴", cls: "bg-red-100 text-red-700 border-red-200" },
@@ -49,6 +16,7 @@ const NAV = [
  { id: "home", icon: "🏠", label: "الرئيسية" },
  { id: "diagnosis", icon: "🔬", label: "التشخيص" },
  { id: "education", icon: "📚", label: "التثقيف" },
+ { id: "medicines", icon: "💊", label: "الأدوية" },
  { id: "referrals", icon: "📋", label: "الإحالات" },
  { id: "visits", icon: "📅", label: "السجل" },
 ];
@@ -56,8 +24,8 @@ const NAV = [
 function Input({ label, ...props }) {
  return (
  <div>
- {label && <label className="block text-xs text-gray-500 mb-1">{label}</label>}
- <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400 bg-white" {...props} />
+ {label && <label className="block text-xs font-semibold text-on-surface-variant mb-1.5">{label}</label>}
+ <input className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-white text-on-surface placeholder:text-gray-400 transition" {...props} />
  </div>
  );
 }
@@ -65,18 +33,18 @@ function Input({ label, ...props }) {
 function TextArea({ label, ...props }) {
  return (
  <div>
- {label && <label className="block text-xs text-gray-500 mb-1">{label}</label>}
- <textarea className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-400 resize-none bg-white" {...props} />
+ {label && <label className="block text-xs font-semibold text-on-surface-variant mb-1.5">{label}</label>}
+ <textarea className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary resize-none bg-white text-on-surface placeholder:text-gray-400 transition" {...props} />
  </div>
  );
 }
 
 function Card({ children, className = "" }) {
- return <div className={`bg-white rounded-xl shadow-sm p-4 ${className}`}>{children}</div>;
+ return <div className={`bg-white rounded-2xl shadow-sm p-5 ${className}`}>{children}</div>;
 }
 
 function SectionTitle({ children }) {
- return <p className="text-xs font-bold text-green-700 border-b border-gray-100 pb-2 mb-3">{children}</p>;
+ return <p className="text-xs font-bold text-primary border-b border-surface-container pb-2 mb-3 uppercase tracking-wide">{children}</p>;
 }
 
 export default function App() {
@@ -84,12 +52,15 @@ export default function App() {
  const [patient, setPatient] = useState({ name: "", age: "", sex: "male", complaint: "", temp: "", pulse: "", bp: "", symptoms: "", duration: "" });
  const [result, setResult] = useState(null);
  const [loading, setLoading] = useState(false);
- const [referrals, setReferrals] = useState([]);
- const [visits, setVisits] = useState([]);
+ const [referrals, setReferrals] = useState(() => { try { return JSON.parse(localStorage.getItem("chw_referrals") || "[]"); } catch { return []; } });
+ const [visits, setVisits] = useState(() => { try { return JSON.parse(localStorage.getItem("chw_visits") || "[]"); } catch { return []; } });
  const [refForm, setRefForm] = useState(null);
  const [visitForm, setVisitForm] = useState(null);
  const [condition, setCondition] = useState(null);
  const [isOnline, setIsOnline] = useState(navigator.onLine);
+ const [medSearch, setMedSearch] = useState("");
+ const [medCategory, setMedCategory] = useState("الكل");
+ const [medicine, setMedicine] = useState(null);
 
  useEffect(() => {
    const handleOnline = () => setIsOnline(true);
@@ -101,6 +72,14 @@ export default function App() {
      window.removeEventListener('offline', handleOffline);
    };
  }, []);
+
+ useEffect(() => { localStorage.setItem("chw_referrals", JSON.stringify(referrals)); }, [referrals]);
+ useEffect(() => { localStorage.setItem("chw_visits", JSON.stringify(visits)); }, [visits]);
+
+ const exportData = () => {
+   const lines = ["=== سجل الإحالات ===", ...referrals.map(r => `${r.date} | ${r.name} | ${URGENCY[r.urgency]?.label} | ${r.reason}`), "", "=== سجل الزيارات ===", ...visits.map(v => `${v.date} | ${v.name} | ${v.diagnosis} | ${v.treatment}`)];
+   navigator.clipboard.writeText(lines.join("\n"));
+ };
 
  const p = (k, v) => setPatient(prev => ({ ...prev, [k]: v }));
  const today = () => new Date().toLocaleDateString("ar-SA");
@@ -166,7 +145,7 @@ export default function App() {
      const trimmed = line.trim();
      if (!trimmed) return <br key={i} />;
      // Headers
-     if (trimmed.includes('###')) return <h3 key={i} className="font-bold text-green-800 text-base mt-4 mb-2 border-b border-green-200 pb-1">{trimmed.replace(/###/g, '').trim()}</h3>;
+     if (trimmed.includes('###')) return <h3 key={i} className="font-black text-primary text-base mt-4 mb-2 border-b border-primary-light pb-1">{trimmed.replace(/###/g, '').trim()}</h3>;
      // Bullet points
      if (trimmed.startsWith('*') || trimmed.startsWith('-')) return <p key={i} className="pr-4 py-0.5 text-gray-700">• {trimmed.replace(/[*|-]/g, '').trim()}</p>;
      // Bold text
@@ -196,62 +175,70 @@ export default function App() {
 
  // ── DISCLAIMER ──────────────────────────────────────────
  if (page === "disclaimer") return (
- <div dir="rtl" className="min-h-screen bg-gradient-to-br from-green-50 to-white flex items-center justify-center p-5">
- <div className="max-w-sm w-full">
- <div className="text-center mb-6">
- <div className="text-7xl mb-3">🏥</div>
- <h1 className="text-2xl font-bold text-green-800">مساعد العاملين الصحيين</h1>
- <p className="text-sm text-gray-500 mt-1">أداة دعم طبي ميداني — اليمن</p>
- </div>
- <div className="bg-amber-50 border border-amber-300 rounded-2xl p-5 mb-5">
- <h2 className="text-base font-bold text-amber-800 mb-2 flex items-center gap-2">⚠️ تنبيه طبي هام</h2>
- <p className="text-sm text-amber-800 leading-7">
- هذا التطبيق <strong>أداة دعم للعاملين الصحيين المدرّبين فقط</strong>، وليس بديلاً عن الطبيب أو التشخيص الطبي المتخصص.
- يجب دائماً الرجوع إلى مختص طبي متى أمكن ذلك.
- القرار الطبي النهائي يعود للعامل الصحي المدرّب، وليس للتطبيق.
- </p>
- </div>
- <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-5 text-xs text-blue-700 flex gap-2">
- <span>📶</span>
- <span>يعمل التطبيق في وضع محدود بدون إنترنت (التثقيف الصحي والسجلات فقط). التشخيص يتطلب اتصالاً.</span>
- </div>
- <button onClick={() => setPage("home")} className="w-full bg-green-600 text-white py-3.5 rounded-xl font-bold text-base hover:bg-green-700 active:bg-green-800 transition shadow-sm">
- أفهم وأوافق — ابدأ التطبيق
- </button>
- </div>
+ <div dir="rtl" className="min-h-screen bg-surface flex items-center justify-center p-5 relative overflow-hidden">
+   <div className="absolute top-[-15%] left-[-10%] w-[55%] h-[55%] rounded-full bg-primary opacity-5 blur-[100px] pointer-events-none" />
+   <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-secondary opacity-5 blur-[80px] pointer-events-none" />
+   <div className="max-w-sm w-full relative z-10">
+     <div className="text-center mb-8">
+       <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-primary to-primary-container rounded-3xl shadow-lg shadow-primary/20 mb-4 text-4xl">🏥</div>
+       <h1 className="text-2xl font-black text-on-surface tracking-tight">مساعد العاملين الصحيين</h1>
+       <p className="text-sm text-on-surface-variant mt-1 font-medium">أداة دعم طبي ميداني — اليمن</p>
+     </div>
+     <div className="bg-white rounded-3xl p-6 mb-4 shadow-sm border border-outline-variant/30">
+       <div className="flex justify-center mb-4">
+         <div className="bg-red-100 rounded-full p-3 text-3xl">⚠️</div>
+       </div>
+       <h2 className="text-lg font-black text-on-surface text-center mb-1">تنبيه طبي هام</h2>
+       <p className="text-xs text-on-surface-variant text-center mb-4">يرجى قراءة الشروط قبل المتابعة</p>
+       <div className="space-y-3 text-sm text-on-surface-variant leading-6">
+         <div className="flex gap-3 items-start">
+           <span className="text-primary text-base mt-0.5">🩺</span>
+           <p>هذا التطبيق <strong className="text-on-surface">أداة دعم للعاملين الصحيين المدرّبين فقط</strong>، وليس بديلاً عن الطبيب أو التشخيص المتخصص.</p>
+         </div>
+         <div className="flex gap-3 items-start">
+           <span className="text-primary text-base mt-0.5">🚨</span>
+           <p>في الطوارئ — اتصل بالخدمات الطبية الميدانية فوراً.</p>
+         </div>
+         <div className="flex gap-3 items-start">
+           <span className="text-primary text-base mt-0.5">📶</span>
+           <p>يعمل التطبيق في وضع محدود بدون إنترنت. التشخيص يتطلب اتصالاً.</p>
+         </div>
+       </div>
+     </div>
+     <button onClick={() => setPage("home")} className="w-full bg-gradient-to-l from-primary to-primary-container text-white py-4 rounded-full font-black text-base active:scale-95 transition-transform shadow-lg shadow-primary/20">
+       أوافق وأرغب في المتابعة ←
+     </button>
+   </div>
  </div>
  );
 
  // ── MAIN LAYOUT ─────────────────────────────────────────
  return (
- <div dir="rtl" className="min-h-screen bg-gray-50 flex flex-col max-w-md mx-auto relative">
+ <div dir="rtl" className="min-h-screen bg-surface flex flex-col max-w-md mx-auto relative">
 
  {!isOnline && (
-   <div className="bg-red-600 text-white text-center py-2 text-xs font-bold z-30 sticky top-0">
-     أنت غير متصل — التشخيص غير متاح، التثقيف الصحي يعمل
+   <div className="bg-red-600 text-white text-center py-1.5 text-xs font-bold z-30 sticky top-0">
+     📵 غير متصل — التشخيص غير متاح
    </div>
  )}
 
  {/* Header */}
- <header className="bg-green-700 text-white px-4 py-3 flex items-center justify-between sticky top-0 z-20 shadow-md">
+ <header className="bg-white/90 backdrop-blur-md border-b border-outline-variant/40 px-5 py-3 flex items-center justify-between sticky top-0 z-20">
  <div>
- <h1 className="font-bold text-sm leading-tight">مساعد العاملين الصحيين</h1>
- <p className="text-green-300 text-xs">أداة دعم طبي ميداني</p>
+ <h1 className="font-black text-base text-primary leading-tight tracking-tight">مساعد العاملين الصحيين</h1>
+ <p className="text-on-surface-variant text-xs font-medium">أداة دعم طبي ميداني — اليمن</p>
  </div>
- <div className="flex items-center gap-2">
- <span className={`text-xs px-2 py-0.5 rounded-full ${isOnline ? "bg-green-600 text-green-200" : "bg-red-500 text-red-100"}`}>
+ <span className={`text-xs px-3 py-1 rounded-full font-bold ${isOnline ? "bg-secondary-container text-on-secondary-container" : "bg-red-100 text-red-700"}`}>
    {isOnline ? "🟢 متصل" : "🔴 غير متصل"}
  </span>
- <span className="text-2xl">🏥</span>
- </div>
  </header>
 
  {/* Content */}
- <main className="flex-1 overflow-y-auto pb-20 px-4 py-4 space-y-4">
+ <main className="flex-1 overflow-y-auto pb-24 px-4 py-5 space-y-4">
 
  {/* HOME */}
  {page === "home" && <>
- <h2 className="text-lg font-bold text-gray-800">تقييم مريض جديد</h2>
+ <h2 className="text-xl font-black text-on-surface tracking-tight">تقييم مريض جديد</h2>
  <Card>
  <SectionTitle>المعلومات الأساسية</SectionTitle>
  <div className="space-y-3">
@@ -259,8 +246,8 @@ export default function App() {
  <div className="flex gap-3">
  <div className="flex-1"><Input label="العمر *" type="number" placeholder="سنوات" value={patient.age} onChange={e => p("age", e.target.value)} /></div>
  <div className="flex-1">
- <label className="block text-xs text-gray-500 mb-1">الجنس</label>
- <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-green-400" value={patient.sex} onChange={e => p("sex", e.target.value)}>
+ <label className="block text-xs font-semibold text-on-surface-variant mb-1.5">الجنس</label>
+ <select className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-primary text-on-surface transition" value={patient.sex} onChange={e => p("sex", e.target.value)}>
  <option value="male">ذكر</option>
  <option value="female">أنثى</option>
  </select>
@@ -290,20 +277,20 @@ export default function App() {
  <button
  onClick={analyze}
  disabled={loading || !isOnline || !patient.name || !patient.complaint || !patient.symptoms}
- className="w-full bg-green-600 text-white py-3.5 rounded-xl font-bold text-base disabled:opacity-40 disabled:cursor-not-allowed hover:bg-green-700 active:bg-green-800 transition shadow-sm flex items-center justify-center gap-2"
+ className="w-full bg-gradient-to-l from-primary to-primary-container text-white py-4 rounded-full font-black text-base disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
  >
  {loading ? <><span className="animate-spin inline-block">⏳</span> جارٍ التحليل...</> : "🔬 تحليل وتشخيص"}
  </button>
- {(!isOnline) && <p className="text-center text-xs text-red-500 font-bold">التشخيص غير متاح في وضع عدم الاتصال</p>}
+ {(!isOnline) && <p className="text-center text-xs text-red-600 font-bold">📵 التشخيص غير متاح بدون اتصال</p>}
  {(!patient.name || !patient.complaint || !patient.symptoms) &&
- <p className="text-center text-xs text-gray-400">* يرجى ملء الحقول الإلزامية أولاً</p>}
+ <p className="text-center text-xs text-on-surface-variant">* يرجى ملء الحقول الإلزامية أولاً</p>}
  </>}
 
  {/* DIAGNOSIS */}
  {page === "diagnosis" && <>
  <div className="flex items-center justify-between">
- <h2 className="text-lg font-bold text-gray-800">نتائج التشخيص</h2>
- <button onClick={() => { setPage("home"); setResult(null); }} className="text-green-600 text-sm font-semibold">+ مريض جديد</button>
+ <h2 className="text-xl font-black text-on-surface tracking-tight">نتائج التشخيص</h2>
+ <button onClick={() => { setPage("home"); setResult(null); }} className="text-sm font-bold text-primary bg-primary-light px-3 py-1.5 rounded-full">+ مريض جديد</button>
  </div>
  {loading && (
  <Card className="text-center py-10">
@@ -324,9 +311,9 @@ export default function App() {
  <div className="text-sm text-gray-700 leading-8">
    {renderMarkdown(result)}
  </div>
- <button 
+ <button
   onClick={() => navigator.clipboard.writeText(result)}
-  className="mt-4 w-full text-xs text-gray-500 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50"
+  className="mt-4 w-full text-xs font-bold text-primary py-2 border border-primary-light rounded-xl hover:bg-surface-low transition"
  >
   نسخ النتائج 📋
  </button>
@@ -334,36 +321,36 @@ export default function App() {
  <div className="grid grid-cols-2 gap-3">
  <button
  onClick={() => { setRefForm({ name: patient.name, urgency: "urgent", reason: patient.complaint }); setPage("referrals"); }}
- className="bg-red-50 text-red-700 border border-red-200 py-2.5 rounded-xl text-sm font-semibold hover:bg-red-100 transition"
+ className="bg-red-50 text-red-700 border border-red-100 py-3 rounded-2xl text-sm font-bold active:scale-95 transition-transform"
  >📋 إحالة المريض</button>
  <button
  onClick={() => { setVisitForm({ name: patient.name, date: today(), diagnosis: "", treatment: "", followUp: "" }); setPage("visits"); }}
- className="bg-blue-50 text-blue-700 border border-blue-200 py-2.5 rounded-xl text-sm font-semibold hover:bg-blue-100 transition"
+ className="bg-surface-low text-primary border border-primary-light py-3 rounded-2xl text-sm font-bold active:scale-95 transition-transform"
  >📅 تسجيل الزيارة</button>
  </div>
  </>}
  {!result && !loading && (
  <Card className="text-center py-10">
  <div className="text-4xl mb-3">🔬</div>
- <p className="text-gray-400 text-sm">لا يوجد تشخيص بعد</p>
- <button onClick={() => setPage("home")} className="mt-3 text-green-600 font-semibold text-sm">← أدخل بيانات المريض</button>
+ <p className="text-on-surface-variant text-sm">لا يوجد تشخيص بعد</p>
+ <button onClick={() => setPage("home")} className="mt-3 text-primary font-bold text-sm">← أدخل بيانات المريض</button>
  </Card>
  )}
  </>}
 
  {/* EDUCATION */}
  {page === "education" && <>
- <h2 className="text-lg font-bold text-gray-800">التثقيف الصحي</h2>
+ <h2 className="text-xl font-black text-on-surface tracking-tight">التثقيف الصحي</h2>
  {condition === null ? (
  <div className="space-y-2">
  {CONDITIONS.map((c, i) => (
- <button key={i} onClick={() => setCondition(i)} className="w-full bg-white rounded-xl shadow-sm p-4 flex items-center gap-3 text-right hover:shadow-md active:bg-gray-50 transition">
- <span className="text-3xl w-10 text-center">{c.icon}</span>
+ <button key={i} onClick={() => setCondition(i)} className="w-full bg-white rounded-2xl shadow-sm p-4 flex items-center gap-3 text-right active:bg-surface-low active:scale-[0.99] transition-all">
+ <div className="w-11 h-11 rounded-xl bg-surface-container flex items-center justify-center text-2xl flex-shrink-0">{c.icon}</div>
  <div className="flex-1">
- <p className="font-semibold text-gray-800 text-sm">{c.name}</p>
- <p className="text-xs text-gray-400">{c.en}</p>
+ <p className="font-bold text-on-surface text-sm">{c.name}</p>
+ <p className="text-xs text-on-surface-variant">{c.en}</p>
  </div>
- <span className="text-gray-300 text-lg">‹</span>
+ <span className="text-outline-variant text-lg font-light">‹</span>
  </button>
  ))}
  </div>
@@ -378,19 +365,84 @@ export default function App() {
  </div>
  <div className="space-y-4">
  <div>
- <p className="text-xs font-bold text-green-700 mb-1.5">🩺 الأعراض</p>
- <p className="text-sm text-gray-700 leading-6">{CONDITIONS[condition].symptoms}</p>
+ <p className="text-xs font-bold text-secondary mb-1.5 uppercase tracking-wide">🩺 الأعراض</p>
+ <p className="text-sm text-on-surface-variant leading-6">{CONDITIONS[condition].symptoms}</p>
  </div>
  <div>
- <p className="text-xs font-bold text-blue-700 mb-1.5">💊 العلاج</p>
- <p className="text-sm text-gray-700 leading-6">{CONDITIONS[condition].treatment}</p>
+ <p className="text-xs font-bold text-primary mb-1.5 uppercase tracking-wide">💊 العلاج</p>
+ <p className="text-sm text-on-surface-variant leading-6">{CONDITIONS[condition].treatment}</p>
  </div>
- <div className="bg-red-50 border border-red-100 rounded-xl p-3">
- <p className="text-xs font-bold text-red-700 mb-1.5">🚨 متى تُحيل المريض فوراً</p>
+ <div className="bg-red-50 border border-red-100 rounded-2xl p-4">
+ <p className="text-xs font-bold text-red-700 mb-1.5 uppercase tracking-wide">🚨 متى تُحيل فوراً</p>
  <p className="text-sm text-red-700 leading-6">{CONDITIONS[condition].refer}</p>
  </div>
  </div>
- <button onClick={() => setCondition(null)} className="mt-4 w-full text-green-600 font-semibold text-sm py-2 border border-green-200 rounded-lg hover:bg-green-50">← العودة للقائمة</button>
+ <button onClick={() => setCondition(null)} className="mt-4 w-full text-primary font-bold text-sm py-2.5 border border-primary-light rounded-xl hover:bg-surface-low transition">← العودة للقائمة</button>
+ </Card>
+ )}
+ </>}
+
+ {/* MEDICINES */}
+ {page === "medicines" && <>
+ <h2 className="text-xl font-black text-on-surface tracking-tight">دليل الأدوية</h2>
+ {medicine === null ? (
+ <>
+ <input
+   className="w-full border border-outline-variant rounded-full px-5 py-3 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-white text-on-surface placeholder:text-gray-400 transition"
+   placeholder="🔍 ابحث عن دواء..."
+   value={medSearch}
+   onChange={e => setMedSearch(e.target.value)}
+ />
+ <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+   {MEDICINE_CATEGORIES.map(cat => (
+     <button key={cat} onClick={() => setMedCategory(cat)}
+       className={`flex-shrink-0 text-xs px-4 py-1.5 rounded-full border font-semibold transition ${medCategory === cat ? "bg-primary text-white border-primary shadow-sm" : "bg-white text-on-surface-variant border-outline-variant"}`}>
+       {cat}
+     </button>
+   ))}
+ </div>
+ <div className="space-y-2">
+   {MEDICINES.filter(m => (medCategory === "الكل" || m.category === medCategory) && (medSearch === "" || m.name.includes(medSearch) || m.en.toLowerCase().includes(medSearch.toLowerCase()))).map((m, i) => (
+     <button key={i} onClick={() => setMedicine(i)} className="w-full bg-white rounded-2xl shadow-sm p-4 flex items-center gap-3 text-right active:bg-surface-low active:scale-[0.99] transition-all">
+       <div className="w-11 h-11 rounded-xl bg-surface-container flex items-center justify-center text-2xl flex-shrink-0">{m.icon}</div>
+       <div className="flex-1">
+         <p className="font-bold text-on-surface text-sm">{m.name}</p>
+         <p className="text-xs text-on-surface-variant">{m.en}</p>
+         <span className="text-xs text-primary bg-primary-light px-2 py-0.5 rounded-full font-medium">{m.category}</span>
+       </div>
+       <span className="text-outline-variant text-lg font-light">‹</span>
+     </button>
+   ))}
+   {MEDICINES.filter(m => (medCategory === "الكل" || m.category === medCategory) && (medSearch === "" || m.name.includes(medSearch) || m.en.toLowerCase().includes(medSearch.toLowerCase()))).length === 0 && (
+     <Card className="text-center py-8"><p className="text-gray-400 text-sm">لا توجد نتائج</p></Card>
+   )}
+ </div>
+ </>
+ ) : (
+ <Card>
+   <div className="flex items-center gap-3 pb-3 mb-3 border-b border-gray-100">
+     <span className="text-4xl">{MEDICINES[medicine].icon}</span>
+     <div>
+       <h3 className="font-bold text-gray-800">{MEDICINES[medicine].name}</h3>
+       <p className="text-xs text-gray-400">{MEDICINES[medicine].en}</p>
+       <span className="text-xs text-primary bg-primary-light px-2 py-0.5 rounded-full font-medium">{MEDICINES[medicine].category}</span>
+     </div>
+   </div>
+   <div className="space-y-4">
+     <div>
+       <p className="text-xs font-bold text-primary mb-1.5 uppercase tracking-wide">💊 الاستخدام</p>
+       <p className="text-sm text-on-surface-variant leading-6">{MEDICINES[medicine].use}</p>
+     </div>
+     <div className="bg-surface-low border border-primary-light rounded-2xl p-4">
+       <p className="text-xs font-bold text-primary mb-1.5 uppercase tracking-wide">📏 الجرعة</p>
+       <p className="text-sm text-on-surface leading-7 whitespace-pre-line">{MEDICINES[medicine].dose}</p>
+     </div>
+     <div className="bg-red-50 border border-red-100 rounded-2xl p-4">
+       <p className="text-xs font-bold text-red-700 mb-1.5 uppercase tracking-wide">⚠️ تحذيرات وموانع</p>
+       <p className="text-sm text-red-700 leading-6">{MEDICINES[medicine].caution}</p>
+     </div>
+   </div>
+   <button onClick={() => setMedicine(null)} className="mt-4 w-full text-primary font-bold text-sm py-2.5 border border-primary-light rounded-xl hover:bg-surface-low transition">← العودة للقائمة</button>
  </Card>
  )}
  </>}
@@ -398,8 +450,8 @@ export default function App() {
  {/* REFERRALS */}
  {page === "referrals" && <>
  <div className="flex items-center justify-between">
- <h2 className="text-lg font-bold text-gray-800">الإحالات ({referrals.length})</h2>
- <button onClick={() => setRefForm({ name: "", urgency: "urgent", reason: "" })} className="bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg font-semibold">+ إضافة</button>
+ <h2 className="text-xl font-black text-on-surface tracking-tight">الإحالات <span className="text-on-surface-variant font-medium text-base">({referrals.length})</span></h2>
+ <button onClick={() => setRefForm({ name: "", urgency: "urgent", reason: "" })} className="bg-primary text-white text-xs px-4 py-2 rounded-full font-bold shadow-sm shadow-primary/20">+ إضافة</button>
  </div>
  {refForm && (
  <Card className="border border-green-200">
@@ -407,8 +459,8 @@ export default function App() {
  <div className="space-y-3">
  <Input placeholder="اسم المريض" value={refForm.name} onChange={e => setRefForm({ ...refForm, name: e.target.value })} />
  <div>
- <label className="text-xs text-gray-500 block mb-1">مستوى الإلحاح</label>
- <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-green-400" value={refForm.urgency} onChange={e => setRefForm({ ...refForm, urgency: e.target.value })}>
+ <label className="text-xs font-semibold text-on-surface-variant block mb-1.5">مستوى الإلحاح</label>
+ <select className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-primary text-on-surface transition" value={refForm.urgency} onChange={e => setRefForm({ ...refForm, urgency: e.target.value })}>
  <option value="urgent">عاجل 🔴</option>
  <option value="semi">شبه عاجل 🟡</option>
  <option value="routine">روتيني 🟢</option>
@@ -416,8 +468,8 @@ export default function App() {
  </div>
  <TextArea rows={2} placeholder="سبب الإحالة..." value={refForm.reason} onChange={e => setRefForm({ ...refForm, reason: e.target.value })} />
  <div className="flex gap-2">
- <button onClick={() => { if (refForm.name) { setReferrals([{ ...refForm, date: today() }, ...referrals]); setRefForm(null); } }} className="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm font-semibold">حفظ</button>
- <button onClick={() => setRefForm(null)} className="flex-1 bg-gray-100 text-gray-600 py-2 rounded-lg text-sm">إلغاء</button>
+ <button onClick={() => { if (refForm.name) { setReferrals([{ ...refForm, date: today() }, ...referrals]); setRefForm(null); } }} className="flex-1 bg-gradient-to-l from-primary to-primary-container text-white py-2.5 rounded-full text-sm font-bold shadow-sm">حفظ</button>
+ <button onClick={() => setRefForm(null)} className="flex-1 bg-surface-container text-on-surface-variant py-2.5 rounded-full text-sm font-medium">إلغاء</button>
  </div>
  </div>
  </Card>
@@ -442,8 +494,11 @@ export default function App() {
  {/* VISITS */}
  {page === "visits" && <>
  <div className="flex items-center justify-between">
- <h2 className="text-lg font-bold text-gray-800">سجل الزيارات ({visits.length})</h2>
- <button onClick={() => setVisitForm({ name: "", date: today(), diagnosis: "", treatment: "", followUp: "" })} className="bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg font-semibold">+ تسجيل</button>
+ <h2 className="text-xl font-black text-on-surface tracking-tight">سجل الزيارات <span className="text-on-surface-variant font-medium text-base">({visits.length})</span></h2>
+ <div className="flex gap-2">
+   {(visits.length > 0 || referrals.length > 0) && <button onClick={exportData} className="bg-surface-high text-primary text-xs px-3 py-2 rounded-full font-bold border border-primary-light">تصدير 📋</button>}
+   <button onClick={() => setVisitForm({ name: "", date: today(), diagnosis: "", treatment: "", followUp: "" })} className="bg-primary text-white text-xs px-4 py-2 rounded-full font-bold shadow-sm shadow-primary/20">+ تسجيل</button>
+ </div>
  </div>
  {visitForm && (
  <Card className="border border-green-200">
@@ -454,8 +509,8 @@ export default function App() {
  <Input placeholder="العلاج المُعطى" value={visitForm.treatment} onChange={e => setVisitForm({ ...visitForm, treatment: e.target.value })} />
  <Input placeholder="متابعة مطلوبة؟" value={visitForm.followUp} onChange={e => setVisitForm({ ...visitForm, followUp: e.target.value })} />
  <div className="flex gap-2">
- <button onClick={() => { if (visitForm.name) { setVisits([{ ...visitForm }, ...visits]); setVisitForm(null); } }} className="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm font-semibold">حفظ</button>
- <button onClick={() => setVisitForm(null)} className="flex-1 bg-gray-100 text-gray-600 py-2 rounded-lg text-sm">إلغاء</button>
+ <button onClick={() => { if (visitForm.name) { setVisits([{ ...visitForm }, ...visits]); setVisitForm(null); } }} className="flex-1 bg-gradient-to-l from-primary to-primary-container text-white py-2.5 rounded-full text-sm font-bold shadow-sm">حفظ</button>
+ <button onClick={() => setVisitForm(null)} className="flex-1 bg-surface-container text-on-surface-variant py-2.5 rounded-full text-sm font-medium">إلغاء</button>
  </div>
  </div>
  </Card>
@@ -480,13 +535,14 @@ export default function App() {
  </main>
 
  {/* Bottom Nav */}
- <nav className="fixed bottom-0 right-0 left-0 max-w-md mx-auto bg-white border-t border-gray-200 flex z-20 shadow-lg">
+ <nav className="fixed bottom-0 right-0 left-0 max-w-md mx-auto bg-white/95 backdrop-blur-md border-t border-outline-variant/30 flex z-20 rounded-t-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.06)] pb-safe">
  {NAV.map(item => (
- <button key={item.id} onClick={() => { setPage(item.id); if (item.id !== "education") setCondition(null); }}
- className={`flex-1 flex flex-col items-center py-2.5 gap-0.5 transition ${page === item.id ? "text-green-600" : "text-gray-400"}`}>
- <span className="text-xl leading-none">{item.icon}</span>
- <span className={`text-xs leading-none ${page === item.id ? "font-bold" : ""}`}>{item.label}</span>
- {page === item.id && <span className="w-1 h-1 rounded-full bg-green-500 mt-0.5" />}
+ <button key={item.id} onClick={() => { setPage(item.id); if (item.id !== "education") setCondition(null); if (item.id !== "medicines") setMedicine(null); }}
+ className={`flex-1 flex flex-col items-center py-3 gap-0.5 transition-all active:scale-90 ${page === item.id ? "text-primary" : "text-on-surface-variant/50"}`}>
+ <div className={`flex items-center justify-center rounded-2xl transition-all ${page === item.id ? "bg-primary-light px-3 py-1" : "px-3 py-1"}`}>
+   <span className="text-lg leading-none">{item.icon}</span>
+ </div>
+ <span className={`text-[10px] leading-none mt-0.5 ${page === item.id ? "font-black" : "font-medium"}`}>{item.label}</span>
  </button>
  ))}
  </nav>
