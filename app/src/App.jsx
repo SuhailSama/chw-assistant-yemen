@@ -61,6 +61,7 @@ export default function App() {
  const [medSearch, setMedSearch] = useState("");
  const [medCategory, setMedCategory] = useState("الكل");
  const [medicine, setMedicine] = useState(null);
+ const [validationErrors, setValidationErrors] = useState([]);
 
  useEffect(() => {
    const handleOnline = () => setIsOnline(true);
@@ -81,10 +82,60 @@ export default function App() {
    navigator.clipboard.writeText(lines.join("\n"));
  };
 
- const p = (k, v) => setPatient(prev => ({ ...prev, [k]: v }));
+ const p = (k, v) => { setPatient(prev => ({ ...prev, [k]: v })); setValidationErrors([]); };
  const today = () => new Date().toLocaleDateString("ar-SA");
 
+ // ── INPUT VALIDATION ─────────────────────────────────────
+ const isGibberish = (str) => {
+   if (!str || str.trim().length < 3) return true;
+   const letters = str.replace(/[\s\d\W]/g, "");
+   if (letters.length < 2) return true;
+   // Detect repeated single character spam (e.g. "aaaaaaa", "zzzzzz")
+   const uniqueChars = new Set(str.toLowerCase().replace(/\s/g, ""));
+   if (uniqueChars.size < 2) return true;
+   return false;
+ };
+
+ const validateInputs = () => {
+   const errors = [];
+   const age = Number(patient.age);
+
+   if (isGibberish(patient.name))
+     errors.push("الاسم يبدو غير صحيح — يرجى إدخال الاسم الكامل للمريض");
+
+   if (!patient.age || isNaN(age) || age < 0 || age > 120)
+     errors.push("العمر يجب أن يكون رقماً بين 0 و 120");
+
+   if (!patient.complaint || patient.complaint.trim().length < 5)
+     errors.push("الشكوى الرئيسية قصيرة جداً — صِف الشكوى بوضوح");
+
+   if (isGibberish(patient.symptoms) || patient.symptoms.trim().length < 10)
+     errors.push("الأعراض غير كافية — صِف الأعراض بتفصيل أكثر (10 أحرف على الأقل)");
+
+   if (patient.temp) {
+     const t = Number(patient.temp);
+     if (isNaN(t) || t < 30 || t > 45)
+       errors.push("درجة الحرارة غير منطقية — يجب أن تكون بين 30 و 45°C");
+   }
+
+   if (patient.pulse) {
+     const pulse = Number(patient.pulse);
+     if (isNaN(pulse) || pulse < 20 || pulse > 300)
+       errors.push("النبض غير منطقي — يجب أن يكون بين 20 و 300 نبضة/دقيقة");
+   }
+
+   if (patient.bp) {
+     const bpMatch = patient.bp.match(/^(\d{2,3})\/(\d{2,3})$/);
+     if (!bpMatch || Number(bpMatch[1]) < 50 || Number(bpMatch[1]) > 280 || Number(bpMatch[2]) < 20 || Number(bpMatch[2]) > 180)
+       errors.push("ضغط الدم غير صحيح — أدخل بصيغة مثل 120/80");
+   }
+
+   return errors;
+ };
+
  const buildPrompt = () => `أنت طبيب مساعد خبير تدعم عاملاً صحياً مجتمعياً في منطقة ريفية باليمن. قدّم تشخيصاً احتمالياً وتوصيات عملية باللهجة اليمنية العامية البسيطة.
+
+⚠️ قاعدة صارمة: إذا كانت البيانات المدخلة تبدو مزيفة أو غير منطقية طبياً (مثل: نصوص عشوائية، أعراض لا معنى لها، أرقام مستحيلة فيزيولوجياً)، لا تولّد أي تشخيص. بدلاً من ذلك، أجب بجملة واحدة فقط: "⚠️ البيانات المدخلة غير كافية أو غير منطقية. يرجى إدخال بيانات مريض حقيقية."
 
 يجب أن يكون الرد بتنسيق Markdown نظيف ومنظم (استخدم العناوين، النقاط، والخط العريض لتسهيل القراءة).
 
@@ -155,6 +206,12 @@ export default function App() {
  };
 
  const analyze = async () => {
+   const errors = validateInputs();
+   if (errors.length > 0) {
+     setValidationErrors(errors);
+     return;
+   }
+   setValidationErrors([]);
    setLoading(true);
    setResult(null);
    try {
@@ -284,6 +341,14 @@ export default function App() {
  {(!isOnline) && <p className="text-center text-xs text-red-600 font-bold">📵 التشخيص غير متاح بدون اتصال</p>}
  {(!patient.name || !patient.complaint || !patient.symptoms) &&
  <p className="text-center text-xs text-on-surface-variant">* يرجى ملء الحقول الإلزامية أولاً</p>}
+ {validationErrors.length > 0 && (
+ <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
+   <p className="text-xs font-black text-red-700 mb-2">⚠️ يرجى تصحيح الأخطاء التالية:</p>
+   <ul className="space-y-1">
+     {validationErrors.map((e, i) => <li key={i} className="text-xs text-red-600 flex gap-2"><span>•</span><span>{e}</span></li>)}
+   </ul>
+ </div>
+ )}
  </>}
 
  {/* DIAGNOSIS */}
