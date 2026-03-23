@@ -133,40 +133,59 @@ export default function App() {
    return errors;
  };
 
- const buildPrompt = () => `أنت طبيب مساعد خبير تدعم عاملاً صحياً مجتمعياً في منطقة ريفية باليمن. قدّم تشخيصاً احتمالياً وتوصيات عملية باللهجة اليمنية العامية البسيطة.
+ const buildPrompt = () => `أنت طبيب مساعد خبير تدعم عاملاً صحياً مجتمعياً في منطقة ريفية باليمن.
 
-⚠️ قاعدة صارمة: إذا كانت البيانات المدخلة تبدو مزيفة أو غير منطقية طبياً (مثل: نصوص عشوائية، أعراض لا معنى لها، أرقام مستحيلة فيزيولوجياً)، لا تولّد أي تشخيص. بدلاً من ذلك، أجب بجملة واحدة فقط: "⚠️ البيانات المدخلة غير كافية أو غير منطقية. يرجى إدخال بيانات مريض حقيقية."
+══════════════════════════════════
+الخطوة الأولى (إلزامية): قيّم جودة البيانات قبل أي شيء آخر.
 
-يجب أن يكون الرد بتنسيق Markdown نظيف ومنظم (استخدم العناوين، النقاط، والخط العريض لتسهيل القراءة).
+البيانات غير كافية إذا توفّر أي مما يلي:
+- الأعراض مبهمة جداً أو كلمة واحدة فقط مثل "تعبان" أو "مريض"
+- الشكوى لا تصف عرضاً طبياً واضحاً يمكن التصرف بناءً عليه
+- النصوص تبدو عشوائية أو اختبارية أو لا معنى لها طبياً
+- البيانات متناقضة أو مستحيلة فيزيولوجياً
+- معلومات العمر أو الجنس تتعارض مع الشكوى (مثل: رجل يشكو من آلام الولادة)
 
-بيانات المريض:
-- الاسم: ${patient.name} | العمر: ${patient.age} | الجنس: ${patient.sex === "male" ? "ذكر" : "أنثى"}
-- الشكوى الرئيسية: ${patient.complaint}
-- الأعراض: ${patient.symptoms}
-- المدة: ${patient.duration}
-- الحرارة: ${patient.temp || "—"}°C | النبض: ${patient.pulse || "—"} ن/د | ضغط الدم: ${patient.bp || "—"}
+══════════════════════════════════
+إذا كانت البيانات غير كافية:
+ابدأ ردك بالسطر التالي حرفياً ولا تغيره: ##PROBE##
+ثم اكتب فقط هذين القسمين ولا شيء غيرهما — لا تشخيص، لا علاج، لا إجراءات:
 
-أجب بهذا الترتيب مع استخدام التنسيق المطلوب:
+### ❓ المعلومات غير كافية للتشخيص
+اشرح في جملة أو جملتين بالعربية البسيطة لماذا لا يمكن تقديم تشخيص الآن.
+
+### 🗣️ اسأل المريض هذه الأسئلة:
+* (4-6 أسئلة محددة وعملية تساعد العامل الصحي على فهم الحالة بشكل أوضح)
+
+══════════════════════════════════
+إذا كانت البيانات كافية:
+ابدأ ردك بالسطر التالي حرفياً ولا تغيره: ##DIAGNOSIS##
+ثم قدّم التشخيص باللهجة اليمنية العامية البسيطة بهذا الترتيب:
 
 ### 🩺 التشخيص المحتمل
-* (أذكر 2-3 تشخيصات محتملة مرتبة حسب الاحتمالية مع سبب موجز لكل منها)
+* (2-3 تشخيصات مرتبة حسب الاحتمالية مع سبب موجز)
 
 ### ⚠️ مستوى الخطورة
 * (بسيط / متوسط / خطير / طوارئ — مع جملة تفسيرية)
 
 ### ⚡ الإجراءات الفورية
-* (ماذا يفعل العامل الصحي الآن — خطوات عملية واضحة)
+* (خطوات عملية واضحة يفعلها العامل الصحي الآن)
 
 ### 💊 العلاج المقترح
-* (أدوية أو إجراءات متاحة محلياً بجرعات واضحة إن أمكن)
+* (أدوية أو إجراءات متاحة محلياً بجرعات واضحة)
 
 ### 🚨 علامات الخطر — متى تُحيل فوراً
-* (قائمة واضحة بعلامات تستوجب الإحالة العاجلة)
+* (قائمة واضحة بعلامات الإحالة العاجلة)
 
 ### 🗣️ تعليمات للمريض
 * (بكلام بسيط يفهمه المريض ويستطيع تذكره)
 
-تنبيه: هذا موقف ميداني طارئ. كن دقيقاً وعملياً ومنظماً.`;
+══════════════════════════════════
+بيانات المريض:
+- الاسم: ${patient.name} | العمر: ${patient.age} | الجنس: ${patient.sex === "male" ? "ذكر" : "أنثى"}
+- الشكوى الرئيسية: ${patient.complaint}
+- الأعراض: ${patient.symptoms}
+- المدة: ${patient.duration || "غير محددة"}
+- الحرارة: ${patient.temp || "—"}°C | النبض: ${patient.pulse || "—"} ن/د | ضغط الدم: ${patient.bp || "—"}`;
 
  const fetchWithRetry = async (provider, attempts = 2) => {
    for (let i = 0; i < attempts; i++) {
@@ -365,24 +384,49 @@ export default function App() {
  </Card>
  )}
  {result && !loading && <>
- <Card className="border border-green-100">
- <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-100">
- <span className="text-lg">👤</span>
- <div>
- <p className="font-semibold text-gray-800 text-sm">{patient.name}</p>
- <p className="text-xs text-gray-400">{patient.age} سنة · {patient.sex === "male" ? "ذكر" : "أنثى"} · {patient.complaint}</p>
+ {/* Patient info header — always shown */}
+ <div className="flex items-center gap-3 bg-white rounded-2xl p-4 shadow-sm">
+   <span className="text-2xl">👤</span>
+   <div>
+     <p className="font-bold text-on-surface text-sm">{patient.name}</p>
+     <p className="text-xs text-on-surface-variant">{patient.age} سنة · {patient.sex === "male" ? "ذكر" : "أنثى"} · {patient.complaint}</p>
+   </div>
  </div>
+
+ {/* PROBE response — insufficient data */}
+ {result.includes("##PROBE##") && (
+ <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-5">
+   <div className="flex items-center gap-3 mb-3 pb-3 border-b border-amber-200">
+     <div className="w-10 h-10 rounded-xl bg-amber-200 flex items-center justify-center text-xl flex-shrink-0">❓</div>
+     <div>
+       <p className="font-black text-amber-900 text-sm">لا يمكن التشخيص — المعلومات غير كافية</p>
+       <p className="text-xs text-amber-700">اسأل المريض الأسئلة أدناه ثم أعِد الإدخال</p>
+     </div>
+   </div>
+   <div className="text-sm text-amber-900 leading-8">
+     {renderMarkdown(result.replace("##PROBE##", "").trim())}
+   </div>
+   <button onClick={() => { setPage("home"); setResult(null); }}
+     className="mt-4 w-full bg-amber-500 text-white py-3 rounded-full font-black text-sm active:scale-95 transition-transform">
+     ← العودة لإعادة الإدخال
+   </button>
  </div>
+ )}
+
+ {/* DIAGNOSIS response — sufficient data */}
+ {!result.includes("##PROBE##") && (
+ <Card className="border border-primary-light">
  <div className="text-sm text-gray-700 leading-8">
-   {renderMarkdown(result)}
+   {renderMarkdown(result.replace("##DIAGNOSIS##", "").trim())}
  </div>
  <button
-  onClick={() => navigator.clipboard.writeText(result)}
+  onClick={() => navigator.clipboard.writeText(result.replace("##DIAGNOSIS##", "").trim())}
   className="mt-4 w-full text-xs font-bold text-primary py-2 border border-primary-light rounded-xl hover:bg-surface-low transition"
  >
   نسخ النتائج 📋
  </button>
  </Card>
+ )}
  <div className="grid grid-cols-2 gap-3">
  <button
  onClick={() => { setRefForm({ name: patient.name, urgency: "urgent", reason: patient.complaint }); setPage("referrals"); }}
