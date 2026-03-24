@@ -169,7 +169,110 @@ resource "aws_ssm_parameter" "allowed_origin" {
   value = "changeme" # Manually update in AWS Console
 }
 
+# ── Cognito Authentication ──────────────────────────────────
+
+resource "aws_cognito_user_pool" "users" {
+  name = "${var.project_name}-users"
+
+  # Admins create accounts for CHWs — no self-signup allowed
+  # This is important for field deployments where you control who has access
+  admin_create_user_config {
+    allow_admin_create_user_only = true
+  }
+
+  # Use username (not email) as primary login — works without internet to verify email
+  username_attributes = []
+  username_configuration {
+    case_sensitive = false
+  }
+
+  # Password policy — strong enough to be secure, not so complex CHWs forget it
+  password_policy {
+    minimum_length                   = 8
+    require_lowercase                = true
+    require_numbers                  = true
+    require_symbols                  = false
+    require_uppercase                = false
+    temporary_password_validity_days = 7
+  }
+
+  # Keep tokens alive for 30 days so offline workers stay logged in
+  user_token_validity_units {
+    access_token  = "hours"
+    id_token      = "hours"
+    refresh_token = "days"
+  }
+
+  # Access token: 1 hour | Refresh token: 30 days (offline capability)
+  # The refresh token lets the app silently get a new access token without re-login
+  schema {
+    name                = "role"
+    attribute_data_type = "String"
+    mutable             = true
+    string_attribute_constraints {
+      min_length = 0
+      max_length = 20
+    }
+  }
+}
+
+# The "door" the React app uses to authenticate users
+# ALLOW_USER_PASSWORD_AUTH = username + password login (simplest for CHWs)
+# ALLOW_REFRESH_TOKEN_AUTH = silent token renewal for offline capability
+resource "aws_cognito_user_pool_client" "web" {
+  name         = "${var.project_name}-web-client"
+  user_pool_id = aws_cognito_user_pool.users.id
+
+  # No client secret — web/mobile apps can't keep secrets safe
+  generate_secret = false
+
+  explicit_auth_flows = [
+    "ALLOW_USER_PASSWORD_AUTH",
+    "ALLOW_REFRESH_TOKEN_AUTH",
+    "ALLOW_USER_SRP_AUTH",
+  ]
+
+  # Token validity windows
+  access_token_validity  = 1    # hours
+  id_token_validity      = 1    # hours
+  refresh_token_validity = 30   # days
+
+  token_validity_units {
+    access_token  = "hours"
+    id_token      = "hours"
+    refresh_token = "days"
+  }
+}
+
+# ── User Groups (Roles) ─────────────────────────────────────
+# Groups control what each user can see/do in the app
+
+resource "aws_cognito_user_group" "chw" {
+  name         = "CHW"
+  user_pool_id = aws_cognito_user_pool.users.id
+  description  = "Community Health Workers — can enter patients, diagnoses, referrals, visits"
+  precedence   = 3
+}
+
+resource "aws_cognito_user_group" "supervisor" {
+  name         = "Supervisor"
+  user_pool_id = aws_cognito_user_pool.users.id
+  description  = "Supervisors — all CHW access plus view all workers' records"
+  precedence   = 2
+}
+
+resource "aws_cognito_user_group" "admin" {
+  name         = "Admin"
+  user_pool_id = aws_cognito_user_pool.users.id
+  description  = "Admins — full access including user management panel"
+  precedence   = 1
+}
+
 # ── Outputs ────────────────────────────────────────────────
 
 output "cloudfront_domain" { value = aws_cloudfront_distribution.cf.domain_name }
 output "api_gateway_url" { value = "${aws_apigatewayv2_stage.prod.invoke_url}/v1/messages" }
+
+# These two values go into your React app's config
+output "cognito_user_pool_id" { value = aws_cognito_user_pool.users.id }
+output "cognito_client_id" { value = aws_cognito_user_pool_client.web.id }

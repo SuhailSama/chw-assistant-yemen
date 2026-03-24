@@ -1,6 +1,11 @@
 import { useState, useEffect } from "react";
 import { CONDITIONS } from "./data/conditions";
 import { MEDICINES, MEDICINE_CATEGORIES } from "./data/medicines";
+import { useAuth } from "./auth/useAuth";
+import LoginScreen from "./auth/LoginScreen";
+
+// Tabs that require a logged-in user
+const PROTECTED_TABS = ["diagnosis", "referrals", "visits"];
 
 // ── CONFIG ── swap LAMBDA_URL with your AWS Lambda endpoint in production
 const LAMBDA_URL = import.meta.env.VITE_LAMBDA_URL;
@@ -48,6 +53,7 @@ function SectionTitle({ children }) {
 }
 
 export default function App() {
+ const { user, role, loading: authLoading, logout, recheckSession } = useAuth();
  const [page, setPage] = useState("disclaimer");
  const [patient, setPatient] = useState({ name: "", age: "", sex: "male", complaint: "", temp: "", pulse: "", bp: "", symptoms: "", duration: "" });
  const [result, setResult] = useState(null);
@@ -230,6 +236,22 @@ export default function App() {
    setPage("diagnosis");
  };
 
+ // ── AUTH GATING ─────────────────────────────────────────
+ // While Amplify checks cached tokens, show a spinner
+ if (authLoading) return (
+   <div dir="rtl" className="min-h-screen bg-surface flex items-center justify-center">
+     <div className="text-center">
+       <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+       <p className="text-on-surface-variant text-sm">جارٍ التحقق...</p>
+     </div>
+   </div>
+ );
+
+ // If user tries to go to a protected tab without logging in, show login screen
+ if (PROTECTED_TABS.includes(page) && !user) return (
+   <LoginScreen onLogin={() => { recheckSession(); }} />
+ );
+
  // ── DISCLAIMER ──────────────────────────────────────────
  if (page === "disclaimer") return (
  <div dir="rtl" className="min-h-screen bg-surface flex items-center justify-center p-5 relative overflow-hidden">
@@ -285,9 +307,20 @@ export default function App() {
  <h1 className="font-black text-base text-primary leading-tight tracking-tight">مساعد العاملين الصحيين</h1>
  <p className="text-on-surface-variant text-xs font-medium">أداة دعم طبي ميداني — اليمن</p>
  </div>
- <span className={`text-xs px-3 py-1 rounded-full font-bold ${isOnline ? "bg-secondary-container text-on-secondary-container" : "bg-red-100 text-red-700"}`}>
-   {isOnline ? "🟢 متصل" : "🔴 غير متصل"}
- </span>
+ <div className="flex items-center gap-2">
+   <span className={`text-xs px-3 py-1 rounded-full font-bold ${isOnline ? "bg-secondary-container text-on-secondary-container" : "bg-red-100 text-red-700"}`}>
+     {isOnline ? "🟢 متصل" : "🔴 غير متصل"}
+   </span>
+   {user && (
+     <button
+       onClick={logout}
+       className="text-xs px-3 py-1 rounded-full font-bold bg-surface-container text-on-surface-variant border border-outline-variant/40 hover:bg-red-50 hover:text-red-600 transition"
+       title={`خروج (${user.username})`}
+     >
+       خروج
+     </button>
+   )}
+ </div>
  </header>
 
  {/* Content */}
