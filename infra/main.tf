@@ -196,15 +196,7 @@ resource "aws_cognito_user_pool" "users" {
     temporary_password_validity_days = 7
   }
 
-  # Keep tokens alive for 30 days so offline workers stay logged in
-  user_token_validity_units {
-    access_token  = "hours"
-    id_token      = "hours"
-    refresh_token = "days"
-  }
-
   # Access token: 1 hour | Refresh token: 30 days (offline capability)
-  # The refresh token lets the app silently get a new access token without re-login
   schema {
     name                = "role"
     attribute_data_type = "String"
