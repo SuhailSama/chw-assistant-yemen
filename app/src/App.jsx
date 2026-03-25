@@ -4,9 +4,10 @@ import { MEDICINES, MEDICINE_CATEGORIES } from "./data/medicines";
 import { useAuth } from "./auth/useAuth";
 import LoginScreen from "./auth/LoginScreen";
 import AdminPanel from "./AdminPanel";
+import SupervisorView from "./SupervisorView";
 
-// Tabs that require a logged-in user
-const PROTECTED_TABS = ["diagnosis", "referrals", "visits", "admin"];
+// Tabs that require a logged-in user (diagnosis excluded — login prompted at analyze time)
+const PROTECTED_TABS = ["referrals", "visits", "admin", "supervisor"];
 
 // ── CONFIG ── swap LAMBDA_URL with your AWS Lambda endpoint in production
 const LAMBDA_URL = import.meta.env.VITE_LAMBDA_URL;
@@ -212,7 +213,11 @@ export default function App() {
    });
  };
 
+ const [showLoginGate, setShowLoginGate] = useState(false);
+
  const analyze = async () => {
+   // Require login before running AI analysis
+   if (!user) { setShowLoginGate(true); return; }
    const errors = validateInputs();
    if (errors.length > 0) {
      setValidationErrors(errors);
@@ -364,6 +369,21 @@ export default function App() {
  <Input label="مدة الأعراض" placeholder="مثال: 3 أيام" value={patient.duration} onChange={e => p("duration", e.target.value)} />
  </div>
  </Card>
+
+ {/* Login gate modal — shown when unauthenticated user clicks Analyze */}
+ {showLoginGate && (
+   <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center">
+     <div className="bg-white rounded-t-3xl w-full max-w-md p-6">
+       <div className="text-center mb-5">
+         <div className="text-3xl mb-2">🔐</div>
+         <h3 className="font-black text-on-surface text-lg">يجب تسجيل الدخول أولاً</h3>
+         <p className="text-sm text-on-surface-variant mt-1">تسجيل الدخول مطلوب للوصول إلى التشخيص</p>
+       </div>
+       <LoginScreen onLogin={() => { recheckSession(); setShowLoginGate(false); }} />
+       <button onClick={() => setShowLoginGate(false)} className="w-full mt-3 py-3 text-sm text-on-surface-variant font-medium">إلغاء</button>
+     </div>
+   </div>
+ )}
 
  <button
  onClick={analyze}
@@ -657,6 +677,9 @@ export default function App() {
  ))}
  </>}
 
+ {/* SUPERVISOR VIEW */}
+ {page === "supervisor" && ["Supervisor","Admin"].includes(role) && <SupervisorView />}
+
  {/* ADMIN PANEL */}
  {page === "admin" && role === "Admin" && <AdminPanel />}
 
@@ -664,7 +687,11 @@ export default function App() {
 
  {/* Bottom Nav */}
  <nav className="fixed bottom-0 right-0 left-0 max-w-md mx-auto bg-white/95 backdrop-blur-md border-t border-outline-variant/30 flex z-20 rounded-t-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.06)] pb-safe">
- {[...NAV_BASE, ...(role === "Admin" ? [{ id: "admin", icon: "⚙️", label: "الإدارة" }] : [])].map(item => (
+ {[
+   ...NAV_BASE,
+   ...(["Supervisor","Admin"].includes(role) ? [{ id: "supervisor", icon: "📊", label: "المتابعة" }] : []),
+   ...(role === "Admin" ? [{ id: "admin", icon: "⚙️", label: "الإدارة" }] : []),
+ ].map(item => (
  <button key={item.id} onClick={() => { setPage(item.id); if (item.id !== "education") setCondition(null); if (item.id !== "medicines") setMedicine(null); }}
  className={`flex-1 flex flex-col items-center py-3 gap-0.5 transition-all active:scale-90 ${page === item.id ? "text-primary" : "text-on-surface-variant/50"}`}>
  <div className={`flex items-center justify-center rounded-2xl transition-all ${page === item.id ? "bg-primary-light px-3 py-1" : "px-3 py-1"}`}>
