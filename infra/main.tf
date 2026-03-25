@@ -31,14 +31,29 @@ resource "aws_iam_policy" "lambda_ssm" {
   name = "${var.project_name}-lambda-ssm"
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = "ssm:GetParameters"
-      Resource = [
-        aws_ssm_parameter.anthropic_key.arn,
-        aws_ssm_parameter.gemini_key.arn,
-      ]
-    }]
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "ssm:GetParameters"
+        Resource = [
+          aws_ssm_parameter.anthropic_key.arn,
+          aws_ssm_parameter.gemini_key.arn,
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "cognito-idp:ListUsers",
+          "cognito-idp:AdminCreateUser",
+          "cognito-idp:AdminAddUserToGroup",
+          "cognito-idp:AdminRemoveUserFromGroup",
+          "cognito-idp:AdminListGroupsForUser",
+          "cognito-idp:AdminDisableUser",
+          "cognito-idp:AdminEnableUser",
+        ]
+        Resource = aws_cognito_user_pool.users.arn
+      }
+    ]
   })
 }
 
@@ -58,8 +73,9 @@ resource "aws_lambda_function" "proxy" {
 
   environment {
     variables = {
-      ANTHROPIC_KEY_PARAM = aws_ssm_parameter.anthropic_key.name
-      GEMINI_KEY_PARAM    = aws_ssm_parameter.gemini_key.name
+      ANTHROPIC_KEY_PARAM  = aws_ssm_parameter.anthropic_key.name
+      GEMINI_KEY_PARAM     = aws_ssm_parameter.gemini_key.name
+      COGNITO_USER_POOL_ID = aws_cognito_user_pool.users.id
     }
   }
 }
@@ -83,6 +99,30 @@ resource "aws_apigatewayv2_integration" "lambda" {
 resource "aws_apigatewayv2_route" "messages" {
   api_id    = aws_apigatewayv2_api.api.id
   route_key = "POST /v1/messages"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+}
+
+resource "aws_apigatewayv2_route" "admin_users_get" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "GET /admin/users"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+}
+
+resource "aws_apigatewayv2_route" "admin_users_post" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "POST /admin/users"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+}
+
+resource "aws_apigatewayv2_route" "admin_users_group" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "PUT /admin/users/{username}/group"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+}
+
+resource "aws_apigatewayv2_route" "admin_users_toggle" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "PUT /admin/users/{username}/toggle"
   target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
 }
 

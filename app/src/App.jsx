@@ -3,9 +3,10 @@ import { CONDITIONS } from "./data/conditions";
 import { MEDICINES, MEDICINE_CATEGORIES } from "./data/medicines";
 import { useAuth } from "./auth/useAuth";
 import LoginScreen from "./auth/LoginScreen";
+import AdminPanel from "./AdminPanel";
 
 // Tabs that require a logged-in user
-const PROTECTED_TABS = ["diagnosis", "referrals", "visits"];
+const PROTECTED_TABS = ["diagnosis", "referrals", "visits", "admin"];
 
 // ── CONFIG ── swap LAMBDA_URL with your AWS Lambda endpoint in production
 const LAMBDA_URL = import.meta.env.VITE_LAMBDA_URL;
@@ -17,7 +18,7 @@ const URGENCY = {
  routine: { label: "روتيني 🟢", cls: "bg-green-100 text-green-700 border-green-200" },
 };
 
-const NAV = [
+const NAV_BASE = [
  { id: "home", icon: "🏠", label: "الرئيسية" },
  { id: "diagnosis", icon: "🔬", label: "التشخيص" },
  { id: "education", icon: "📚", label: "التثقيف" },
@@ -655,11 +656,15 @@ export default function App() {
  </Card>
  ))}
  </>}
+
+ {/* ADMIN PANEL */}
+ {page === "admin" && role === "Admin" && <AdminPanel />}
+
  </main>
 
  {/* Bottom Nav */}
  <nav className="fixed bottom-0 right-0 left-0 max-w-md mx-auto bg-white/95 backdrop-blur-md border-t border-outline-variant/30 flex z-20 rounded-t-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.06)] pb-safe">
- {NAV.map(item => (
+ {[...NAV_BASE, ...(role === "Admin" ? [{ id: "admin", icon: "⚙️", label: "الإدارة" }] : [])].map(item => (
  <button key={item.id} onClick={() => { setPage(item.id); if (item.id !== "education") setCondition(null); if (item.id !== "medicines") setMedicine(null); }}
  className={`flex-1 flex flex-col items-center py-3 gap-0.5 transition-all active:scale-90 ${page === item.id ? "text-primary" : "text-on-surface-variant/50"}`}>
  <div className={`flex items-center justify-center rounded-2xl transition-all ${page === item.id ? "bg-primary-light px-3 py-1" : "px-3 py-1"}`}>
