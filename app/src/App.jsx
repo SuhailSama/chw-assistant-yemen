@@ -6,8 +6,8 @@ import LoginScreen from "./auth/LoginScreen";
 import AdminPanel from "./AdminPanel";
 import SupervisorView from "./SupervisorView";
 
-// Tabs that require a logged-in user (diagnosis excluded — login prompted at analyze time)
-const PROTECTED_TABS = ["referrals", "visits", "admin", "supervisor"];
+// Tabs that require a logged-in user
+const PROTECTED_TABS = ["diagnosis", "referrals", "visits", "admin", "supervisor"];
 
 // ── CONFIG ── swap LAMBDA_URL with your AWS Lambda endpoint in production
 const LAMBDA_URL = import.meta.env.VITE_LAMBDA_URL;
@@ -213,11 +213,7 @@ export default function App() {
    });
  };
 
- const [showLoginGate, setShowLoginGate] = useState(false);
-
  const analyze = async () => {
-   // Require login before running AI analysis
-   if (!user) { setShowLoginGate(true); return; }
    const errors = validateInputs();
    if (errors.length > 0) {
      setValidationErrors(errors);
@@ -369,21 +365,6 @@ export default function App() {
  <Input label="مدة الأعراض" placeholder="مثال: 3 أيام" value={patient.duration} onChange={e => p("duration", e.target.value)} />
  </div>
  </Card>
-
- {/* Login gate modal — shown when unauthenticated user clicks Analyze */}
- {showLoginGate && (
-   <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center">
-     <div className="bg-white rounded-t-3xl w-full max-w-md p-6">
-       <div className="text-center mb-5">
-         <div className="text-3xl mb-2">🔐</div>
-         <h3 className="font-black text-on-surface text-lg">يجب تسجيل الدخول أولاً</h3>
-         <p className="text-sm text-on-surface-variant mt-1">تسجيل الدخول مطلوب للوصول إلى التشخيص</p>
-       </div>
-       <LoginScreen onLogin={() => { recheckSession(); setShowLoginGate(false); }} />
-       <button onClick={() => setShowLoginGate(false)} className="w-full mt-3 py-3 text-sm text-on-surface-variant font-medium">إلغاء</button>
-     </div>
-   </div>
- )}
 
  <button
  onClick={analyze}
