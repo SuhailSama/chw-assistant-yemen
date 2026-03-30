@@ -10,8 +10,8 @@ import {
   AdminEnableUserCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
 
-const ssm = new SSMClient({});
-const cognito = new CognitoIdentityProviderClient({ region: process.env.AWS_REGION || "me-south-1" });
+const ssm = new SSMClient({ region: "me-south-1" });
+const cognito = new CognitoIdentityProviderClient({ region: "me-south-1" });
 const USER_POOL_ID = process.env.COGNITO_USER_POOL_ID;
 
 let cachedKeys = null;
