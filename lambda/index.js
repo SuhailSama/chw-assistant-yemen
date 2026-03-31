@@ -9,10 +9,24 @@ import {
   AdminDisableUserCommand,
   AdminEnableUserCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
+import { CognitoJwtVerifier } from "aws-jwt-verify";
 
 const ssm = new SSMClient({ region: "me-south-1" });
 const cognito = new CognitoIdentityProviderClient({ region: "me-south-1" });
 const USER_POOL_ID = process.env.COGNITO_USER_POOL_ID;
+
+const jwtVerifier = CognitoJwtVerifier.create({
+  userPoolId: process.env.COGNITO_USER_POOL_ID,
+  tokenUse: "id",
+  clientId: process.env.COGNITO_CLIENT_ID,
+});
+
+const verifyToken = async (event) => {
+  const auth = event.headers?.authorization || event.headers?.Authorization || "";
+  const token = auth.replace("Bearer ", "");
+  if (!token) return null;
+  try { return await jwtVerifier.verify(token); } catch { return null; }
+};
 
 let cachedKeys = null;
 const getApiKeys = async () => {
@@ -28,15 +42,8 @@ const getApiKeys = async () => {
   return cachedKeys;
 };
 
-const decodeJwt = (token) => {
-  try {
-    return JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString());
-  } catch { return null; }
-};
-
-const isAdmin = (event) => {
-  const auth = event.headers?.authorization || event.headers?.Authorization || "";
-  const payload = decodeJwt(auth.replace("Bearer ", ""));
+const isAdmin = async (event) => {
+  const payload = await verifyToken(event);
   return (payload?.["cognito:groups"] || []).includes("Admin");
 };
 
@@ -51,12 +58,15 @@ const json = (statusCode, body) => ({ statusCode, headers: HEADERS, body: JSON.s
 
 export const handler = async (event) => {
   const method = event.requestContext?.http?.method;
-  const path   = event.requestContext?.http?.path;
+  const rawPath = event.requestContext?.http?.path || "";
+  const path = rawPath.replace(/^\/prod/, ""); // strip stage prefix
 
   if (method === "OPTIONS") return json(200, {});
 
   // ── AI Proxy ─────────────────────────────────────────────
   if (path === "/v1/messages" && method === "POST") {
+    const caller = await verifyToken(event);
+    if (!caller) return json(401, { error: "Authentication required" });
     try {
       const body = JSON.parse(event.body || "{}");
       const { model, messages } = body;
@@ -88,8 +98,14 @@ export const handler = async (event) => {
 
       const data = await res.json();
       if (!isGemini) return json(res.status, data);
-      if (data.choices?.[0]?.message) {
-        return json(200, { content: [{ type: "text", text: data.choices[0].message.content }] });
+      // Gemini OpenAI-compat endpoint may return array on error
+      const gData = Array.isArray(data) ? data[0] : data;
+      if (gData.error) {
+        console.error("Gemini API error:", JSON.stringify(gData.error));
+        return json(res.status, { error: gData.error.message || "AI provider error" });
+      }
+      if (gData.choices?.[0]?.message) {
+        return json(200, { content: [{ type: "text", text: gData.choices[0].message.content }] });
       }
       console.error("Unexpected Gemini response:", JSON.stringify(data));
       return json(502, { error: "Invalid response from AI provider" });
@@ -100,7 +116,7 @@ export const handler = async (event) => {
   }
 
   // ── Admin Routes (Admin group only) ──────────────────────
-  if (!isAdmin(event)) return json(403, { error: "Admin access required" });
+  if (!await isAdmin(event)) return json(403, { error: "Admin access required" });
 
   // GET /admin/users — list all users with their groups
   if (path === "/admin/users" && method === "GET") {

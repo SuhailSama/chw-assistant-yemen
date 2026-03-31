@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import DOMPurify from "dompurify";
+import { fetchAuthSession } from "aws-amplify/auth";
 import { CONDITIONS } from "./data/conditions";
 import { MEDICINES, MEDICINE_CATEGORIES } from "./data/medicines";
 import { useAuth } from "./auth/useAuth";
@@ -182,9 +184,11 @@ export default function App() {
      const controller = new AbortController();
      const timeoutId = setTimeout(() => controller.abort(), 15000);
      try {
+       const session = await fetchAuthSession();
+       const token = session.tokens?.idToken?.toString();
        const res = await fetch(LAMBDA_URL, {
          method: "POST",
-         headers: { "Content-Type": "application/json" },
+         headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
          body: JSON.stringify({ provider, model: MODEL, max_tokens: 1000, messages: [{ role: "user", content: buildPrompt() }] }),
          signal: controller.signal
        });
@@ -210,7 +214,7 @@ export default function App() {
      if (trimmed.startsWith('*') || trimmed.startsWith('-')) return <p key={i} className="pr-4 py-0.5 text-gray-700">• {trimmed.replace(/[*|-]/g, '').trim()}</p>;
      // Bold text
      const formatted = trimmed.replace(/\*\*(.*?)\*\*/g, '<strong class="text-gray-900">$1</strong>');
-     return <p key={i} className="leading-7 text-gray-700" dangerouslySetInnerHTML={{ __html: formatted }} />;
+     return <p key={i} className="leading-7 text-gray-700" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(formatted) }} />;
    });
  };
 

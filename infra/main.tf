@@ -76,6 +76,7 @@ resource "aws_lambda_function" "proxy" {
       ANTHROPIC_KEY_PARAM  = aws_ssm_parameter.anthropic_key.name
       GEMINI_KEY_PARAM     = aws_ssm_parameter.gemini_key.name
       COGNITO_USER_POOL_ID = aws_cognito_user_pool.users.id
+      COGNITO_CLIENT_ID    = aws_cognito_user_pool_client.web.id
     }
   }
 }
