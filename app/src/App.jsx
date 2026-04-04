@@ -7,6 +7,8 @@ import { useAuth } from "./auth/useAuth";
 import LoginScreen from "./auth/LoginScreen";
 import AdminPanel from "./AdminPanel";
 import SupervisorView from "./SupervisorView";
+import { URGENCY } from "./constants/urgency";
+import { Input, TextArea, Card, SectionTitle } from "./components/ui";
 
 // Tabs that require a logged-in user
 const PROTECTED_TABS = ["diagnosis", "records", "admin", "supervisor"];
@@ -15,12 +17,6 @@ const PROTECTED_TABS = ["diagnosis", "records", "admin", "supervisor"];
 const LAMBDA_URL = import.meta.env.VITE_LAMBDA_URL;
 const MODEL = "gemini-2.5-flash-lite";
 
-const URGENCY = {
- urgent: { label: "عاجل 🔴", cls: "bg-red-100 text-red-700 border-red-200" },
- semi: { label: "شبه عاجل 🟡", cls: "bg-yellow-100 text-yellow-700 border-yellow-200" },
- routine: { label: "روتيني 🟢", cls: "bg-green-100 text-green-700 border-green-200" },
-};
-
 const NAV_BASE = [
  { id: "home",      icon: "🏠", label: "الرئيسية" },
  { id: "diagnosis", icon: "🔬", label: "التشخيص"  },
@@ -28,32 +24,6 @@ const NAV_BASE = [
  { id: "medicines", icon: "💊", label: "الأدوية"  },
  { id: "records",   icon: "📁", label: "السجلات"  },
 ];
-
-function Input({ label, ...props }) {
- return (
- <div>
- {label && <label className="block text-xs font-semibold text-on-surface-variant mb-1.5">{label}</label>}
- <input className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-white text-on-surface placeholder:text-gray-400 transition" {...props} />
- </div>
- );
-}
-
-function TextArea({ label, ...props }) {
- return (
- <div>
- {label && <label className="block text-xs font-semibold text-on-surface-variant mb-1.5">{label}</label>}
- <textarea className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary resize-none bg-white text-on-surface placeholder:text-gray-400 transition" {...props} />
- </div>
- );
-}
-
-function Card({ children, className = "" }) {
- return <div className={`bg-white rounded-2xl shadow-sm p-5 ${className}`}>{children}</div>;
-}
-
-function SectionTitle({ children }) {
- return <p className="text-xs font-bold text-primary border-b border-surface-container pb-2 mb-3 uppercase tracking-wide">{children}</p>;
-}
 
 export default function App() {
  const { user, role, loading: authLoading, logout, recheckSession } = useAuth();

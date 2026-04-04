@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { fetchAuthSession } from "aws-amplify/auth";
+import { Input } from "./components/ui";
 
 const API = import.meta.env.VITE_LAMBDA_URL.replace("/v1/messages", "");
 const GROUPS = ["CHW", "Supervisor", "Admin"];
@@ -135,22 +136,18 @@ export default function AdminPanel() {
         <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/30 p-5">
           <h3 className="font-bold text-on-surface mb-4">إنشاء مستخدم جديد</h3>
           <form onSubmit={createUser} className="space-y-3">
+            <Input
+              label="اسم المستخدم"
+              value={form.username}
+              onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
+              placeholder="مثال: ahmed_chw"
+              required
+            />
             <div>
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5">اسم المستخدم</label>
-              <input
-                value={form.username}
-                onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
-                className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                placeholder="مثال: ahmed_chw"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5">كلمة المرور المؤقتة</label>
-              <input
+              <Input
+                label="كلمة المرور المؤقتة"
                 value={form.tempPassword}
                 onChange={e => setForm(f => ({ ...f, tempPassword: e.target.value }))}
-                className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                 placeholder="8 أحرف على الأقل وتشمل أرقاماً"
                 minLength={8}
                 required
