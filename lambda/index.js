@@ -10,10 +10,16 @@ import {
   AdminEnableUserCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
 import { CognitoJwtVerifier } from "aws-jwt-verify";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, PutCommand, QueryCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
 
 const ssm = new SSMClient({ region: "me-south-1" });
 const cognito = new CognitoIdentityProviderClient({ region: "me-south-1" });
 const USER_POOL_ID = process.env.COGNITO_USER_POOL_ID;
+const ddbClient = new DynamoDBClient({ region: process.env.AWS_REGION || "eu-west-1" });
+const ddb = DynamoDBDocumentClient.from(ddbClient);
+const VISITS_TABLE = process.env.VISITS_TABLE;
+const REFERRALS_TABLE = process.env.REFERRALS_TABLE;
 
 const jwtVerifier = CognitoJwtVerifier.create({
   userPoolId: process.env.COGNITO_USER_POOL_ID,
@@ -113,6 +119,115 @@ export const handler = async (event) => {
       console.error("Lambda Error:", err);
       return json(500, { error: err.message });
     }
+  }
+
+  // ── Data API Routes (authenticated users) ──────────────────
+  // GET /api/visits
+  if (path === "/api/visits" && method === "GET") {
+    const caller = await verifyToken(event);
+    if (!caller) return json(401, { error: "Authentication required" });
+    const groups = caller["cognito:groups"] || [];
+    const isSupervisor = groups.includes("Supervisor") || groups.includes("Admin");
+    const chwUsername = isSupervisor && event.queryStringParameters?.chw
+      ? event.queryStringParameters.chw
+      : (caller["cognito:username"] || caller.sub);
+    try {
+      const result = await ddb.send(new QueryCommand({
+        TableName: VISITS_TABLE,
+        KeyConditionExpression: "chwUsername = :u",
+        ExpressionAttributeValues: { ":u": chwUsername },
+        ScanIndexForward: false,
+      }));
+      return json(200, { visits: result.Items || [] });
+    } catch (err) { return json(500, { error: err.message }); }
+  }
+
+  // POST /api/visits
+  if (path === "/api/visits" && method === "POST") {
+    const caller = await verifyToken(event);
+    if (!caller) return json(401, { error: "Authentication required" });
+    try {
+      const body = JSON.parse(event.body || "{}");
+      const visitId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const item = {
+        chwUsername: caller["cognito:username"] || caller.sub,
+        visitId,
+        createdAt: new Date().toISOString(),
+        ...body,
+      };
+      await ddb.send(new PutCommand({ TableName: VISITS_TABLE, Item: item }));
+      return json(201, { visitId });
+    } catch (err) { return json(500, { error: err.message }); }
+  }
+
+  // GET /api/referrals
+  if (path === "/api/referrals" && method === "GET") {
+    const caller = await verifyToken(event);
+    if (!caller) return json(401, { error: "Authentication required" });
+    const groups = caller["cognito:groups"] || [];
+    const isSupervisor = groups.includes("Supervisor") || groups.includes("Admin");
+    const chwUsername = isSupervisor && event.queryStringParameters?.chw
+      ? event.queryStringParameters.chw
+      : (caller["cognito:username"] || caller.sub);
+    try {
+      const result = await ddb.send(new QueryCommand({
+        TableName: REFERRALS_TABLE,
+        KeyConditionExpression: "chwUsername = :u",
+        ExpressionAttributeValues: { ":u": chwUsername },
+        ScanIndexForward: false,
+      }));
+      return json(200, { referrals: result.Items || [] });
+    } catch (err) { return json(500, { error: err.message }); }
+  }
+
+  // POST /api/referrals
+  if (path === "/api/referrals" && method === "POST") {
+    const caller = await verifyToken(event);
+    if (!caller) return json(401, { error: "Authentication required" });
+    try {
+      const body = JSON.parse(event.body || "{}");
+      const referralId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const item = {
+        chwUsername: caller["cognito:username"] || caller.sub,
+        referralId,
+        createdAt: new Date().toISOString(),
+        ...body,
+      };
+      await ddb.send(new PutCommand({ TableName: REFERRALS_TABLE, Item: item }));
+      return json(201, { referralId });
+    } catch (err) { return json(500, { error: err.message }); }
+  }
+
+  // GET /api/supervisor/summary — Supervisor/Admin only
+  if (path === "/api/supervisor/summary" && method === "GET") {
+    const caller = await verifyToken(event);
+    if (!caller) return json(401, { error: "Authentication required" });
+    const groups = caller["cognito:groups"] || [];
+    if (!groups.includes("Supervisor") && !groups.includes("Admin")) return json(403, { error: "Supervisor access required" });
+    try {
+      const [visitsResult, referralsResult] = await Promise.all([
+        ddb.send(new ScanCommand({ TableName: VISITS_TABLE })),
+        ddb.send(new ScanCommand({ TableName: REFERRALS_TABLE })),
+      ]);
+      const allVisits = visitsResult.Items || [];
+      const allReferrals = referralsResult.Items || [];
+      const urgentCount = allReferrals.filter(r => r.urgency === "urgent").length;
+      const byCHW = {};
+      for (const v of allVisits) {
+        byCHW[v.chwUsername] = byCHW[v.chwUsername] || { visits: 0, referrals: 0 };
+        byCHW[v.chwUsername].visits++;
+      }
+      for (const r of allReferrals) {
+        byCHW[r.chwUsername] = byCHW[r.chwUsername] || { visits: 0, referrals: 0 };
+        byCHW[r.chwUsername].referrals++;
+      }
+      return json(200, {
+        totalVisits: allVisits.length,
+        totalReferrals: allReferrals.length,
+        urgentCount,
+        byCHW,
+      });
+    } catch (err) { return json(500, { error: err.message }); }
   }
 
   // ── Admin Routes (Admin group only) ──────────────────────

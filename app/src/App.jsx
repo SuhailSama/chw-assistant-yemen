@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "./auth/useAuth";
+import { useDataSync } from "./hooks/useDataSync";
 import LoginScreen from "./auth/LoginScreen";
 import AdminPanel from "./AdminPanel";
 import SupervisorView from "./SupervisorView";
@@ -19,8 +20,7 @@ export default function App() {
   const { user, role, loading: authLoading, logout, recheckSession } = useAuth();
   const [page, setPage] = useState("disclaimer");
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [referrals, setReferrals] = useState(() => { try { return JSON.parse(localStorage.getItem("chw_referrals") || "[]"); } catch { return []; } });
-  const [visits, setVisits] = useState(() => { try { return JSON.parse(localStorage.getItem("chw_visits") || "[]"); } catch { return []; } });
+  const { visits, setVisits, referrals, setReferrals, addVisit, addReferral } = useDataSync();
   const { enqueue, pending, processQueue } = useOfflineQueue();
 
   useEffect(() => {
@@ -44,9 +44,6 @@ export default function App() {
     window.addEventListener('online', handleOnlineProcess);
     return () => window.removeEventListener('online', handleOnlineProcess);
   }, [processQueue]);
-
-  useEffect(() => { localStorage.setItem("chw_referrals", JSON.stringify(referrals)); }, [referrals]);
-  useEffect(() => { localStorage.setItem("chw_visits", JSON.stringify(visits)); }, [visits]);
 
   if (authLoading) return (
     <div dir="rtl" className="min-h-screen bg-surface flex items-center justify-center">
@@ -104,10 +101,10 @@ export default function App() {
       <Header isOnline={isOnline} user={user} logout={logout} />
       <main className="flex-1 overflow-y-auto pb-24 px-4 py-5 space-y-4">
         {page === "home"       && <ErrorBoundary><HomePage user={user} visits={visits} referrals={referrals} setPage={setPage} pending={pending} /></ErrorBoundary>}
-        {page === "diagnosis"  && <ErrorBoundary><DiagnosisPage isOnline={isOnline} visits={visits} referrals={referrals} setReferrals={setReferrals} setVisits={setVisits} setPage={setPage} enqueue={enqueue} pending={pending} /></ErrorBoundary>}
+        {page === "diagnosis"  && <ErrorBoundary><DiagnosisPage isOnline={isOnline} visits={visits} referrals={referrals} setReferrals={setReferrals} setVisits={setVisits} setPage={setPage} enqueue={enqueue} pending={pending} addVisit={addVisit} addReferral={addReferral} /></ErrorBoundary>}
         {page === "education"  && <ErrorBoundary><EducationPage /></ErrorBoundary>}
         {page === "medicines"  && <ErrorBoundary><MedicinesPage /></ErrorBoundary>}
-        {page === "records"    && <ErrorBoundary><RecordsPage referrals={referrals} visits={visits} setReferrals={setReferrals} setVisits={setVisits} /></ErrorBoundary>}
+        {page === "records"    && <ErrorBoundary><RecordsPage referrals={referrals} visits={visits} setReferrals={setReferrals} setVisits={setVisits} addVisit={addVisit} addReferral={addReferral} /></ErrorBoundary>}
         {page === "supervisor" && ["Supervisor", "Admin"].includes(role) && <ErrorBoundary><SupervisorView /></ErrorBoundary>}
         {page === "admin"      && role === "Admin" && <ErrorBoundary><AdminPanel /></ErrorBoundary>}
       </main>

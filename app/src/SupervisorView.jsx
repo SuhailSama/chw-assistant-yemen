@@ -1,12 +1,28 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect } from "react";
+import { fetchAuthSession } from "aws-amplify/auth";
 import { URGENCY } from "./constants/urgency";
 
-function readLocal(key) {
+const LAMBDA_URL = import.meta.env.VITE_LAMBDA_URL?.replace("/prod/v1/messages", "/prod");
+
+async function getToken() {
   try {
-    return JSON.parse(localStorage.getItem(key) || "[]");
-  } catch {
-    return [];
-  }
+    const session = await fetchAuthSession();
+    return session.tokens?.idToken?.toString() || null;
+  } catch { return null; }
+}
+
+async function authFetch(path, options = {}) {
+  const token = await getToken();
+  const res = await fetch(`${LAMBDA_URL}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
 }
 
 function StatCard({ count, label }) {
@@ -47,6 +63,9 @@ function ReferralCard({ referral: r }) {
       <p className="text-xs text-on-surface-variant mb-1">
         {r.reason ? `السبب: ${r.reason}` : ""}
       </p>
+      {r.chw && (
+        <p className="text-xs text-on-surface-variant mb-1">العامل الصحي: {r.chw}</p>
+      )}
       {r.date && (
         <p className="text-xs text-gray-400 mt-1">{new Date(r.date).toLocaleDateString("ar-YE")}</p>
       )}
@@ -63,6 +82,9 @@ function VisitCard({ visit: v }) {
           <span className="text-xs text-gray-400">{new Date(v.date).toLocaleDateString("ar-YE")}</span>
         )}
       </div>
+      {v.chw && (
+        <p className="text-xs text-on-surface-variant mb-1">العامل الصحي: {v.chw}</p>
+      )}
       {v.complaint && (
         <p className="text-xs text-on-surface-variant mb-1">الشكوى: {v.complaint}</p>
       )}
@@ -76,20 +98,48 @@ function VisitCard({ visit: v }) {
 export default function SupervisorView() {
   const [tab, setTab] = useState("referrals");
   const [search, setSearch] = useState("");
+  const [selectedCHW, setSelectedCHW] = useState("all");
 
-  const referrals = useMemo(() => readLocal("chw_referrals"), []);
-  const visits = useMemo(() => readLocal("chw_visits"), []);
+  const [referrals, setReferrals] = useState([]);
+  const [visits, setVisits] = useState([]);
+  const [summary, setSummary] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!LAMBDA_URL) return;
+    setLoading(true);
+    setError(null);
+    Promise.all([
+      authFetch("/api/supervisor/summary").then(d => setSummary(d)).catch(() => {}),
+      authFetch("/api/visits?chw=all").then(d => setVisits(d.visits || [])).catch(() => {}),
+      authFetch("/api/referrals").then(d => setReferrals(d.referrals || [])).catch(() => {}),
+    ])
+      .catch(() => setError("تعذّر تحميل البيانات"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Derive CHW list from summary byCHW keys, fall back to scanning records
+  const chwList = summary?.byCHW
+    ? Object.keys(summary.byCHW)
+    : [...new Set([
+        ...visits.map(v => v.chw).filter(Boolean),
+        ...referrals.map(r => r.chw).filter(Boolean),
+      ])];
 
   const now = new Date();
-  const thisMonth = referrals.filter((r) => {
-    if (!r.date) return false;
-    const d = new Date(r.date);
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  });
 
-  const urgentCount = referrals.filter((r) => r.urgency === "urgent").length;
+  const activeReferrals = selectedCHW === "all"
+    ? referrals
+    : referrals.filter(r => r.chw === selectedCHW);
 
-  const visitsThisMonth = visits.filter((v) => {
+  const activeVisits = selectedCHW === "all"
+    ? visits
+    : visits.filter(v => v.chw === selectedCHW);
+
+  const urgentCount = activeReferrals.filter((r) => r.urgency === "urgent").length;
+
+  const visitsThisMonth = activeVisits.filter((v) => {
     if (!v.date) return false;
     const d = new Date(v.date);
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
@@ -98,12 +148,12 @@ export default function SupervisorView() {
   const q = search.trim().toLowerCase();
 
   const filteredReferrals = q
-    ? referrals.filter((r) => (r.patientName || "").toLowerCase().includes(q))
-    : referrals;
+    ? activeReferrals.filter((r) => (r.patientName || "").toLowerCase().includes(q))
+    : activeReferrals;
 
   const filteredVisits = q
-    ? visits.filter((v) => (v.patientName || "").toLowerCase().includes(q))
-    : visits;
+    ? activeVisits.filter((v) => (v.patientName || "").toLowerCase().includes(q))
+    : activeVisits;
 
   return (
     <div className="min-h-screen bg-surface p-4" dir="rtl">
@@ -113,52 +163,85 @@ export default function SupervisorView() {
         <p className="text-xs text-on-surface-variant mt-0.5">عرض نشاط الفريق — للقراءة فقط</p>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-2 mb-5">
-        <StatCard count={referrals.length} label="إجمالي الإحالات" />
-        <StatCard count={urgentCount} label="إحالات عاجلة" />
-        <StatCard count={visitsThisMonth} label="زيارات هذا الشهر" />
-      </div>
+      {/* Loading spinner */}
+      {loading && (
+        <div className="flex items-center justify-center py-10">
+          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
 
-      {/* Search */}
-      <div className="mb-4">
-        <SearchBar value={search} onChange={setSearch} />
-      </div>
+      {/* Error */}
+      {error && !loading && (
+        <p className="text-center text-sm text-red-500 py-4">{error}</p>
+      )}
 
-      {/* Tabs */}
-      <div className="flex gap-2 mb-4">
-        {[
-          { id: "referrals", label: "الإحالات" },
-          { id: "visits", label: "الزيارات" },
-        ].map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`flex-1 py-2 rounded-xl text-sm font-bold transition ${
-              tab === t.id
-                ? "bg-primary text-white shadow-sm"
-                : "bg-white text-on-surface-variant border border-outline-variant"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {!loading && (
+        <>
+          {/* CHW filter dropdown */}
+          {chwList.length > 0 && (
+            <div className="mb-4">
+              <select
+                value={selectedCHW}
+                onChange={(e) => setSelectedCHW(e.target.value)}
+                dir="rtl"
+                className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-white text-on-surface transition"
+              >
+                <option value="all">جميع العاملين الصحيين</option>
+                {chwList.map(chw => (
+                  <option key={chw} value={chw}>{chw}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
-      {/* List */}
-      <div className="flex flex-col gap-3">
-        {tab === "referrals" ? (
-          filteredReferrals.length === 0 ? (
-            <p className="text-center text-sm text-on-surface-variant py-8">لا توجد إحالات</p>
-          ) : (
-            filteredReferrals.map((r, i) => <ReferralCard key={r.id ?? i} referral={r} />)
-          )
-        ) : filteredVisits.length === 0 ? (
-          <p className="text-center text-sm text-on-surface-variant py-8">لا توجد زيارات</p>
-        ) : (
-          filteredVisits.map((v, i) => <VisitCard key={v.id ?? i} visit={v} />)
-        )}
-      </div>
+          {/* Stats */}
+          <div className="grid grid-cols-3 gap-2 mb-5">
+            <StatCard count={activeReferrals.length} label="إجمالي الإحالات" />
+            <StatCard count={urgentCount} label="إحالات عاجلة" />
+            <StatCard count={visitsThisMonth} label="زيارات هذا الشهر" />
+          </div>
+
+          {/* Search */}
+          <div className="mb-4">
+            <SearchBar value={search} onChange={setSearch} />
+          </div>
+
+          {/* Tabs */}
+          <div className="flex gap-2 mb-4">
+            {[
+              { id: "referrals", label: "الإحالات" },
+              { id: "visits", label: "الزيارات" },
+            ].map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`flex-1 py-2 rounded-xl text-sm font-bold transition ${
+                  tab === t.id
+                    ? "bg-primary text-white shadow-sm"
+                    : "bg-white text-on-surface-variant border border-outline-variant"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* List */}
+          <div className="flex flex-col gap-3">
+            {tab === "referrals" ? (
+              filteredReferrals.length === 0 ? (
+                <p className="text-center text-sm text-on-surface-variant py-8">لا توجد إحالات</p>
+              ) : (
+                filteredReferrals.map((r, i) => <ReferralCard key={r.id ?? i} referral={r} />)
+              )
+            ) : filteredVisits.length === 0 ? (
+              <p className="text-center text-sm text-on-surface-variant py-8">لا توجد زيارات</p>
+            ) : (
+              filteredVisits.map((v, i) => <VisitCard key={v.id ?? i} visit={v} />)
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -27,6 +27,42 @@ resource "aws_iam_role_policy_attachment" "lambda_basic" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
+resource "aws_dynamodb_table" "visits" {
+  name         = "chw-visits"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "chwUsername"
+  range_key    = "visitId"
+
+  attribute { name = "chwUsername"; type = "S" }
+  attribute { name = "visitId";     type = "S" }
+  attribute { name = "createdAt";   type = "S" }
+
+  global_secondary_index {
+    name            = "byDate"
+    hash_key        = "chwUsername"
+    range_key       = "createdAt"
+    projection_type = "ALL"
+  }
+}
+
+resource "aws_dynamodb_table" "referrals" {
+  name         = "chw-referrals"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "chwUsername"
+  range_key    = "referralId"
+
+  attribute { name = "chwUsername"; type = "S" }
+  attribute { name = "referralId";  type = "S" }
+  attribute { name = "createdAt";   type = "S" }
+
+  global_secondary_index {
+    name            = "byDate"
+    hash_key        = "chwUsername"
+    range_key       = "createdAt"
+    projection_type = "ALL"
+  }
+}
+
 resource "aws_iam_policy" "lambda_ssm" {
   name = "${var.project_name}-lambda-ssm"
   policy = jsonencode({
@@ -52,6 +88,21 @@ resource "aws_iam_policy" "lambda_ssm" {
           "cognito-idp:AdminEnableUser",
         ]
         Resource = aws_cognito_user_pool.users.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:PutItem",
+          "dynamodb:GetItem",
+          "dynamodb:Query",
+          "dynamodb:Scan",
+        ]
+        Resource = [
+          aws_dynamodb_table.visits.arn,
+          "${aws_dynamodb_table.visits.arn}/index/*",
+          aws_dynamodb_table.referrals.arn,
+          "${aws_dynamodb_table.referrals.arn}/index/*",
+        ]
       }
     ]
   })
@@ -77,6 +128,8 @@ resource "aws_lambda_function" "proxy" {
       GEMINI_KEY_PARAM     = aws_ssm_parameter.gemini_key.name
       COGNITO_USER_POOL_ID = aws_cognito_user_pool.users.id
       COGNITO_CLIENT_ID    = aws_cognito_user_pool_client.web.id
+      VISITS_TABLE         = aws_dynamodb_table.visits.name
+      REFERRALS_TABLE      = aws_dynamodb_table.referrals.name
     }
   }
 }
@@ -86,8 +139,8 @@ resource "aws_apigatewayv2_api" "api" {
   protocol_type = "HTTP"
   cors_configuration {
     allow_origins = ["*"] # Updated post-deployment to CloudFront domain
-    allow_methods = ["POST", "OPTIONS"]
-    allow_headers = ["content-type"]
+    allow_methods = ["GET", "POST", "PUT", "OPTIONS"]
+    allow_headers = ["content-type", "authorization"]
   }
 }
 
@@ -124,6 +177,36 @@ resource "aws_apigatewayv2_route" "admin_users_group" {
 resource "aws_apigatewayv2_route" "admin_users_toggle" {
   api_id    = aws_apigatewayv2_api.api.id
   route_key = "PUT /admin/users/{username}/toggle"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+}
+
+resource "aws_apigatewayv2_route" "visits_get" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "GET /api/visits"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+}
+
+resource "aws_apigatewayv2_route" "visits_post" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "POST /api/visits"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+}
+
+resource "aws_apigatewayv2_route" "referrals_get" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "GET /api/referrals"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+}
+
+resource "aws_apigatewayv2_route" "referrals_post" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "POST /api/referrals"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+}
+
+resource "aws_apigatewayv2_route" "supervisor_summary" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "GET /api/supervisor/summary"
   target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
 }
 
