@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { fetchAuthSession } from "aws-amplify/auth";
-import { Input } from "./components/ui";
+import { Input, ConfirmDialog } from "./components/ui";
 
 const API = import.meta.env.VITE_LAMBDA_URL.replace("/v1/messages", "");
 const GROUPS = ["CHW", "Supervisor", "Admin"];
@@ -31,6 +31,8 @@ export default function AdminPanel() {
   const [form, setForm]           = useState({ username: "", tempPassword: "", group: "CHW" });
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast]         = useState("");
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, username: null });
+  const [busyUsers, setBusyUsers]  = useState(new Set());
 
   useEffect(() => { loadUsers(); }, []);
 
@@ -77,6 +79,7 @@ export default function AdminPanel() {
   }
 
   async function changeGroup(username, newGroup, oldGroup) {
+    setBusyUsers(prev => new Set([...prev, username]));
     try {
       const res = await fetch(`${API}/admin/users/${encodeURIComponent(username)}/group`, {
         method: "PUT",
@@ -89,10 +92,13 @@ export default function AdminPanel() {
       setUsers(prev => prev.map(u => u.username === username ? { ...u, group: newGroup } : u));
     } catch (err) {
       setError(err.message);
+    } finally {
+      setBusyUsers(prev => { const n = new Set(prev); n.delete(username); return n; });
     }
   }
 
   async function toggleUser(username, enabled) {
+    setBusyUsers(prev => new Set([...prev, username]));
     try {
       const res = await fetch(`${API}/admin/users/${encodeURIComponent(username)}/toggle`, {
         method: "PUT",
@@ -105,6 +111,8 @@ export default function AdminPanel() {
       setUsers(prev => prev.map(u => u.username === username ? { ...u, enabled: !enabled } : u));
     } catch (err) {
       setError(err.message);
+    } finally {
+      setBusyUsers(prev => { const n = new Set(prev); n.delete(username); return n; });
     }
   }
 
@@ -214,22 +222,27 @@ export default function AdminPanel() {
                   {/* Change group */}
                   <select
                     value={u.group}
+                    disabled={busyUsers.has(u.username)}
                     onChange={e => changeGroup(u.username, e.target.value, u.group)}
-                    className="text-xs border border-outline-variant rounded-lg px-2 py-1.5 bg-white text-on-surface focus:outline-none focus:border-primary"
+                    className="text-xs border border-outline-variant rounded-lg px-2 py-1.5 bg-white text-on-surface focus:outline-none focus:border-primary disabled:opacity-50"
                   >
                     {GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
                   </select>
 
                   {/* Enable/Disable */}
                   <button
-                    onClick={() => toggleUser(u.username, u.enabled)}
-                    className={`text-xs px-3 py-1.5 rounded-lg font-bold transition ${
+                    disabled={busyUsers.has(u.username)}
+                    onClick={() => u.enabled
+                      ? setConfirmDialog({ open: true, username: u.username })
+                      : toggleUser(u.username, u.enabled)
+                    }
+                    className={`text-xs px-3 py-1.5 rounded-lg font-bold transition disabled:opacity-50 ${
                       u.enabled
                         ? "bg-red-50 text-red-600 border border-red-100"
                         : "bg-green-50 text-green-600 border border-green-100"
                     }`}
                   >
-                    {u.enabled ? "تعطيل" : "تفعيل"}
+                    {busyUsers.has(u.username) ? "جارٍ..." : (u.enabled ? "تعطيل" : "تفعيل")}
                   </button>
                 </div>
               </div>
@@ -237,6 +250,19 @@ export default function AdminPanel() {
           ))}
         </div>
       )}
+      <ConfirmDialog
+        open={confirmDialog.open}
+        title="تأكيد التعطيل"
+        message={"هل أنت متأكد من تعطيل المستخدم " + confirmDialog.username + "؟"}
+        danger={true}
+        confirmLabel="تعطيل"
+        cancelLabel="إلغاء"
+        onConfirm={() => {
+          toggleUser(confirmDialog.username, true);
+          setConfirmDialog({ open: false, username: null });
+        }}
+        onCancel={() => setConfirmDialog({ open: false, username: null })}
+      />
     </div>
   );
 }

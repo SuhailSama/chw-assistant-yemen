@@ -11,28 +11,23 @@ export default defineConfig({
       registerType: 'autoUpdate',
       manifest: {
         name: "مساعد العاملين الصحيين",
-        short_name: "CHW",
-        theme_color: "#15803d",
-        background_color: "#ffffff",
+        short_name: "CHW مساعد",
+        description: "أداة دعم طبي ميداني للعاملين الصحيين في اليمن",
+        theme_color: "#1a6b4a",
+        background_color: "#f5f5f0",
         display: "standalone",
         dir: "rtl",
         lang: "ar",
         icons: [
           {
-            src: 'pwa-64x64.png',
-            sizes: '64x64',
-            type: 'image/png'
-          },
-          {
-            src: 'pwa-192x192.png',
+            src: '/icon-192.png',
             sizes: '192x192',
             type: 'image/png'
           },
           {
-            src: 'pwa-512x512.png',
+            src: '/icon-512.png',
             sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any'
+            type: 'image/png'
           }
         ]
       },
@@ -40,14 +35,10 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         runtimeCaching: [
           {
-            urlPattern: /\/education\/.*/i,
+            urlPattern: /^https:\/\/fonts\.googleapis\.com\//,
             handler: 'CacheFirst',
             options: {
-              cacheName: 'education-cache',
-              expiration: {
-                maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
-              }
+              cacheName: 'google-fonts-cache'
             }
           }
         ]

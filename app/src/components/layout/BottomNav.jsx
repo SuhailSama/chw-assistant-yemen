@@ -6,7 +6,7 @@ const NAV_BASE = [
   { id: "records",   icon: "📁", label: "السجلات"  },
 ];
 
-export default function BottomNav({ page, setPage, role }) {
+export default function BottomNav({ page, setPage, role, pending = [] }) {
   const items = [
     ...NAV_BASE,
     ...(["Supervisor", "Admin"].includes(role) ? [{ id: "supervisor", icon: "📊", label: "المتابعة" }] : []),

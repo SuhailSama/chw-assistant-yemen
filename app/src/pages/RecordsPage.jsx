@@ -4,10 +4,29 @@ import { Card, Input, TextArea, SectionTitle } from "../components/ui";
 
 const today = () => new Date().toLocaleDateString("ar-SA");
 
+export function getPatientHistory(name, visits, referrals) {
+  const q = name.trim().toLowerCase();
+  if (!q) return [];
+  const visitRecords = visits
+    .filter(v => v.name?.toLowerCase().includes(q))
+    .map(v => ({ ...v, type: "visit" }));
+  const referralRecords = referrals
+    .filter(r => r.name?.toLowerCase().includes(q))
+    .map(r => ({ ...r, type: "referral" }));
+  const all = [...visitRecords, ...referralRecords];
+  all.sort((a, b) => {
+    const da = new Date(a.date || 0);
+    const db = new Date(b.date || 0);
+    return db - da;
+  });
+  return all;
+}
+
 export default function RecordsPage({ referrals, visits, setReferrals, setVisits }) {
   const [refForm, setRefForm] = useState(null);
   const [visitForm, setVisitForm] = useState(null);
   const [recordsTab, setRecordsTab] = useState("referrals");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const exportData = () => {
     const lines = [
@@ -20,6 +39,13 @@ export default function RecordsPage({ referrals, visits, setReferrals, setVisits
     navigator.clipboard.writeText(lines.join("\n"));
   };
 
+  const filteredReferrals = searchQuery
+    ? referrals.filter(r => r.name?.toLowerCase().includes(searchQuery.toLowerCase()))
+    : referrals;
+  const filteredVisits = searchQuery
+    ? visits.filter(v => v.name?.toLowerCase().includes(searchQuery.toLowerCase()))
+    : visits;
+
   return <>
     <div className="flex items-center justify-between">
       <h2 className="text-xl font-black text-on-surface tracking-tight">السجلات</h2>
@@ -27,14 +53,20 @@ export default function RecordsPage({ referrals, visits, setReferrals, setVisits
         <button onClick={exportData} className="bg-surface-high text-primary text-xs px-3 py-2 rounded-full font-bold border border-primary-light">تصدير 📋</button>}
     </div>
 
+    <Input
+      placeholder="🔍 بحث باسم المريض..."
+      value={searchQuery}
+      onChange={e => setSearchQuery(e.target.value)}
+    />
+
     <div className="flex bg-surface-container rounded-2xl p-1 gap-1">
       <button onClick={() => setRecordsTab("referrals")}
         className={`flex-1 py-2 rounded-xl text-sm font-bold transition ${recordsTab === "referrals" ? "bg-white text-primary shadow-sm" : "text-on-surface-variant"}`}>
-        📋 الإحالات ({referrals.length})
+        📋 الإحالات ({filteredReferrals.length})
       </button>
       <button onClick={() => setRecordsTab("visits")}
         className={`flex-1 py-2 rounded-xl text-sm font-bold transition ${recordsTab === "visits" ? "bg-white text-primary shadow-sm" : "text-on-surface-variant"}`}>
-        📅 الزيارات ({visits.length})
+        📅 الزيارات ({filteredVisits.length})
       </button>
     </div>
 
@@ -58,16 +90,23 @@ export default function RecordsPage({ referrals, visits, setReferrals, setVisits
           </div>
         </Card>
       )}
-      {referrals.length === 0 ? (
-        <Card className="text-center py-10"><div className="text-4xl mb-3">📋</div><p className="text-sm text-gray-400">لا توجد إحالات مسجلة</p></Card>
-      ) : referrals.map((r, i) => (
+      {filteredReferrals.length === 0 ? (
+        <Card className="text-center py-10"><div className="text-4xl mb-3">📋</div><p className="text-sm text-gray-400">{searchQuery ? "لا توجد نتائج مطابقة" : "لا توجد إحالات مسجلة"}</p></Card>
+      ) : filteredReferrals.map((r, i) => (
         <div key={i} className={`rounded-2xl p-4 border ${URGENCY[r.urgency]?.cls || ""}`}>
           <div className="flex items-center justify-between mb-1.5">
             <p className="font-semibold text-sm">{r.name}</p>
             <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${URGENCY[r.urgency]?.cls || ""}`}>{URGENCY[r.urgency]?.label}</span>
           </div>
           <p className="text-sm opacity-80">{r.reason}</p>
-          <p className="text-xs opacity-50 mt-1">{r.date}</p>
+          <div className="flex items-center justify-between mt-1">
+            <p className="text-xs opacity-50">{r.date}</p>
+            <button
+              onClick={() => { const text = `إحالة مريض\nالاسم: ${r.name}\nمستوى الإلحاح: ${URGENCY[r.urgency]?.label || r.urgency}\nالسبب: ${r.reason}\nالتاريخ: ${r.date}`; window.open("https://wa.me/?text=" + encodeURIComponent(text), "_blank"); }}
+              className="bg-green-50 text-green-700 text-xs px-2 py-1 rounded-full border border-green-200">
+              واتساب 📱
+            </button>
+          </div>
         </div>
       ))}
     </>}
@@ -91,9 +130,9 @@ export default function RecordsPage({ referrals, visits, setReferrals, setVisits
           </div>
         </Card>
       )}
-      {visits.length === 0 ? (
-        <Card className="text-center py-10"><div className="text-4xl mb-3">📅</div><p className="text-sm text-gray-400">لا توجد زيارات مسجلة</p></Card>
-      ) : visits.map((v, i) => (
+      {filteredVisits.length === 0 ? (
+        <Card className="text-center py-10"><div className="text-4xl mb-3">📅</div><p className="text-sm text-gray-400">{searchQuery ? "لا توجد نتائج مطابقة" : "لا توجد زيارات مسجلة"}</p></Card>
+      ) : filteredVisits.map((v, i) => (
         <Card key={i}>
           <div className="flex items-center justify-between mb-2">
             <p className="font-semibold text-gray-800 text-sm">{v.name}</p>

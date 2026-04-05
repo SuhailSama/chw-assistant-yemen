@@ -1,6 +1,6 @@
 import { URGENCY } from "../constants/urgency";
 
-export default function HomePage({ user, visits, referrals, setPage }) {
+export default function HomePage({ user, visits, referrals, setPage, pending = [] }) {
   const todayStr = new Date().toLocaleDateString("ar-SA");
   const todayVisits = visits.filter(v => v.date === todayStr).length;
   const todayReferrals = referrals.filter(r => r.date === todayStr).length;
@@ -25,6 +25,22 @@ export default function HomePage({ user, visits, referrals, setPage }) {
         </div>
       ))}
     </div>
+
+    {pending.length > 0 && (
+      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+        <p className="text-sm font-black text-amber-800 mb-2">⏳ حالات في الانتظار ({pending.length})</p>
+        <div className="space-y-1">
+          {pending.map((item, i) => (
+            <div key={i} className="flex items-center gap-2 text-xs text-amber-700">
+              <span>•</span>
+              <span className="font-semibold">{item.patientData?.name || "مريض"}</span>
+              <span className="text-amber-500">{item.patientData?.complaint || ""}</span>
+            </div>
+          ))}
+        </div>
+        <p className="text-[10px] text-amber-600 mt-2">سيتم التحليل تلقائياً عند عودة الاتصال</p>
+      </div>
+    )}
 
     <div className="grid grid-cols-2 gap-3">
       <button onClick={() => setPage("diagnosis")}

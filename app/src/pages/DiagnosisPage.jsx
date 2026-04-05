@@ -2,19 +2,53 @@ import { useState } from "react";
 import DOMPurify from "dompurify";
 import { fetchAuthSession } from "aws-amplify/auth";
 import { Input, TextArea, Card, SectionTitle } from "../components/ui";
+import { useOfflineQueue } from "../hooks/useOfflineQueue";
+import { getPatientHistory } from "./RecordsPage";
+import { URGENCY } from "../constants/urgency";
 
 const LAMBDA_URL = import.meta.env.VITE_LAMBDA_URL;
 const MODEL = "gemini-2.5-flash-lite";
 const today = () => new Date().toLocaleDateString("ar-SA");
 
-export default function DiagnosisPage({ isOnline, setReferrals, setVisits, setPage }) {
+export default function DiagnosisPage({ isOnline, visits = [], referrals = [], setReferrals, setVisits, setPage, enqueue, pending }) {
   const [patient, setPatient] = useState({ name: "", age: "", sex: "male", complaint: "", temp: "", pulse: "", bp: "", symptoms: "", duration: "" });
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [validationErrors, setValidationErrors] = useState([]);
+  const [copied, setCopied] = useState(false);
   const [refForm, setRefForm] = useState(null);
   const [visitForm, setVisitForm] = useState(null);
   const [savedMsg, setSavedMsg] = useState("");
+  const [patientSearchOpen, setPatientSearchOpen] = useState(false);
+  const [patientSearchQuery, setPatientSearchQuery] = useState("");
+  const [selectedPatientHistory, setSelectedPatientHistory] = useState(null);
+  const { enqueue: localEnqueue } = useOfflineQueue();
+  const _enqueue = enqueue || localEnqueue;
+
+  const allNames = [...new Set([
+    ...visits.map(v => v.name).filter(Boolean),
+    ...referrals.map(r => r.name).filter(Boolean),
+  ])];
+
+  const patientSuggestions = patientSearchQuery.trim()
+    ? allNames.filter(n => n.toLowerCase().includes(patientSearchQuery.toLowerCase()))
+    : [];
+
+  const selectPreviousPatient = (name) => {
+    const history = getPatientHistory(name, visits, referrals);
+    const latest = history[0];
+    if (latest) {
+      setPatient(prev => ({
+        ...prev,
+        name: latest.name || prev.name,
+        age: latest.age !== undefined ? String(latest.age) : prev.age,
+        sex: latest.sex || prev.sex,
+      }));
+      setSelectedPatientHistory(history);
+    }
+    setPatientSearchOpen(false);
+    setPatientSearchQuery("");
+  };
 
   const p = (k, v) => { setPatient(prev => ({ ...prev, [k]: v })); setValidationErrors([]); };
 
@@ -157,6 +191,38 @@ export default function DiagnosisPage({ isOnline, setReferrals, setVisits, setPa
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-black text-on-surface tracking-tight">تقييم مريض جديد</h2>
       </div>
+      <button
+        onClick={() => { setPatientSearchOpen(v => !v); setPatientSearchQuery(""); }}
+        className="w-full bg-surface-container text-primary border border-primary-light py-2.5 rounded-full text-sm font-bold active:scale-95 transition-transform">
+        🔍 بحث عن مريض سابق
+      </button>
+
+      {patientSearchOpen && (
+        <Card className="border border-primary-light">
+          <SectionTitle>بحث عن مريض سابق</SectionTitle>
+          <Input
+            placeholder="اكتب اسم المريض..."
+            value={patientSearchQuery}
+            onChange={e => setPatientSearchQuery(e.target.value)}
+          />
+          {patientSuggestions.length > 0 && (
+            <div className="mt-2 space-y-1">
+              {patientSuggestions.map((name, i) => (
+                <button
+                  key={i}
+                  onClick={() => selectPreviousPatient(name)}
+                  className="w-full text-right px-4 py-2.5 rounded-xl bg-surface-container hover:bg-primary-light text-sm font-medium text-on-surface transition">
+                  👤 {name}
+                </button>
+              ))}
+            </div>
+          )}
+          {patientSearchQuery.trim() && patientSuggestions.length === 0 && (
+            <p className="text-xs text-on-surface-variant mt-2 text-center">لا توجد نتائج مطابقة</p>
+          )}
+        </Card>
+      )}
+
       <Card>
         <SectionTitle>المعلومات الأساسية</SectionTitle>
         <div className="space-y-3">
@@ -192,12 +258,16 @@ export default function DiagnosisPage({ isOnline, setReferrals, setVisits, setPa
         </div>
       </Card>
 
-      <button onClick={analyze}
-        disabled={loading || !isOnline || !patient.name || !patient.complaint || !patient.symptoms}
+      <button onClick={isOnline ? analyze : () => { const errors = validateInputs(); if (errors.length > 0) { setValidationErrors(errors); return; } _enqueue(patient); setSavedMsg("تم حفظ الحالة — سيتم التحليل تلقائياً عند عودة الاتصال"); }}
+        disabled={loading || !patient.name || !patient.complaint || !patient.symptoms}
         className="w-full bg-gradient-to-l from-primary to-primary-container text-white py-4 rounded-full font-black text-base disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2">
-        🔬 تحليل وتشخيص
+        {isOnline ? "🔬 تحليل وتشخيص" : "💾 حفظ للتحليل لاحقاً"}
       </button>
-      {!isOnline && <p className="text-center text-xs text-red-600 font-bold">📵 التشخيص غير متاح بدون اتصال</p>}
+      {savedMsg && !result && (
+        <div className="bg-secondary-container text-on-secondary-container rounded-2xl px-4 py-3 text-sm font-bold text-center">
+          ✓ {savedMsg}
+        </div>
+      )}
       {(!patient.name || !patient.complaint || !patient.symptoms) &&
         <p className="text-center text-xs text-on-surface-variant">* يرجى ملء الحقول الإلزامية أولاً</p>}
       {validationErrors.length > 0 && (
@@ -222,6 +292,9 @@ export default function DiagnosisPage({ isOnline, setReferrals, setVisits, setPa
           <p className="text-green-700 font-medium">جارٍ تحليل الحالة...</p>
           <p className="text-gray-400 text-xs mt-1">قد يستغرق هذا بضع ثوانٍ</p>
         </Card>
+      )}
+      {copied && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-gray-800 text-white text-sm px-4 py-2 rounded-full shadow-lg">تم النسخ ✓</div>
       )}
       {result && !loading && <>
         <div className="flex items-center gap-3 bg-white rounded-2xl p-4 shadow-sm">
@@ -256,11 +329,18 @@ export default function DiagnosisPage({ isOnline, setReferrals, setVisits, setPa
             <div className="text-sm text-gray-700 leading-8">
               {renderMarkdown(result.replace("##DIAGNOSIS##", "").trim())}
             </div>
-            <button
-              onClick={() => navigator.clipboard.writeText(result.replace("##DIAGNOSIS##", "").trim())}
-              className="mt-4 w-full text-xs font-bold text-primary py-2 border border-primary-light rounded-xl hover:bg-surface-low transition">
-              نسخ النتائج 📋
-            </button>
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={() => navigator.clipboard.writeText(result.replace("##DIAGNOSIS##", "").trim()).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); })}
+                className="flex-1 text-xs font-bold text-primary py-2 border border-primary-light rounded-xl hover:bg-surface-low transition">
+                نسخ النتائج 📋
+              </button>
+              <button
+                onClick={() => { const text = `المريض: ${patient.name}\nالعمر: ${patient.age} سنة\nالشكوى: ${patient.complaint}\n\n${result.replace("##DIAGNOSIS##", "").replace("##PROBE##", "").trim()}`; window.open("https://wa.me/?text=" + encodeURIComponent(text), "_blank"); }}
+                className="bg-green-50 text-green-700 border border-green-200 rounded-full px-4 py-2 text-sm font-bold">
+                واتساب 📱
+              </button>
+            </div>
           </Card>
         )}
 
