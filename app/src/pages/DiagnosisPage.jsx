@@ -258,6 +258,32 @@ export default function DiagnosisPage({ isOnline, visits = [], referrals = [], s
         </div>
       </Card>
 
+      {selectedPatientHistory && selectedPatientHistory.length > 0 && (
+        <div className="rounded-2xl shadow-sm bg-white border border-outline-variant/30 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="font-black text-on-surface text-sm">سجل المريض</p>
+            <button onClick={() => setSelectedPatientHistory(null)} className="text-xs text-on-surface-variant px-2 py-1 rounded-full bg-surface-container">إغلاق</button>
+          </div>
+          {selectedPatientHistory.map((rec, i) => (
+            <div key={i} className={`rounded-xl p-3 border text-xs space-y-0.5 ${rec.type === "referral" ? "bg-red-50 border-red-100" : "bg-surface-low border-outline-variant/30"}`}>
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-on-surface">{rec.type === "referral" ? "📋 إحالة" : "📅 زيارة"}</span>
+                <span className="text-on-surface-variant">{rec.date}</span>
+              </div>
+              {rec.type === "visit" && <>
+                {rec.diagnosis && <p className="text-gray-600">🔬 {rec.diagnosis}</p>}
+                {rec.treatment && <p className="text-gray-600">💊 {rec.treatment}</p>}
+                {rec.followUp && <p className="text-blue-600">📌 {rec.followUp}</p>}
+              </>}
+              {rec.type === "referral" && <>
+                {rec.reason && <p className="text-gray-600">{rec.reason}</p>}
+                {rec.urgency && <p className="text-gray-500">{URGENCY[rec.urgency]?.label}</p>}
+              </>}
+            </div>
+          ))}
+        </div>
+      )}
+
       <button onClick={isOnline ? analyze : () => { const errors = validateInputs(); if (errors.length > 0) { setValidationErrors(errors); return; } _enqueue(patient); setSavedMsg("تم حفظ الحالة — سيتم التحليل تلقائياً عند عودة الاتصال"); }}
         disabled={loading || !patient.name || !patient.complaint || !patient.symptoms}
         className="w-full bg-gradient-to-l from-primary to-primary-container text-white py-4 rounded-full font-black text-base disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2">
