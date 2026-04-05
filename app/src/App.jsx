@@ -5,6 +5,7 @@ import AdminPanel from "./AdminPanel";
 import SupervisorView from "./SupervisorView";
 import Header from "./components/layout/Header";
 import BottomNav from "./components/layout/BottomNav";
+import ErrorBoundary from "./components/ErrorBoundary";
 import HomePage from "./pages/HomePage";
 import DiagnosisPage from "./pages/DiagnosisPage";
 import EducationPage from "./pages/EducationPage";
@@ -89,13 +90,13 @@ export default function App() {
     <div dir="rtl" className="min-h-screen bg-surface flex flex-col max-w-md mx-auto relative">
       <Header isOnline={isOnline} user={user} logout={logout} />
       <main className="flex-1 overflow-y-auto pb-24 px-4 py-5 space-y-4">
-        {page === "home"       && <HomePage user={user} visits={visits} referrals={referrals} setPage={setPage} />}
-        {page === "diagnosis"  && <DiagnosisPage isOnline={isOnline} setReferrals={setReferrals} setVisits={setVisits} setPage={setPage} />}
-        {page === "education"  && <EducationPage />}
-        {page === "medicines"  && <MedicinesPage />}
-        {page === "records"    && <RecordsPage referrals={referrals} visits={visits} setReferrals={setReferrals} setVisits={setVisits} />}
-        {page === "supervisor" && ["Supervisor", "Admin"].includes(role) && <SupervisorView />}
-        {page === "admin"      && role === "Admin" && <AdminPanel />}
+        {page === "home"       && <ErrorBoundary><HomePage user={user} visits={visits} referrals={referrals} setPage={setPage} /></ErrorBoundary>}
+        {page === "diagnosis"  && <ErrorBoundary><DiagnosisPage isOnline={isOnline} setReferrals={setReferrals} setVisits={setVisits} setPage={setPage} /></ErrorBoundary>}
+        {page === "education"  && <ErrorBoundary><EducationPage /></ErrorBoundary>}
+        {page === "medicines"  && <ErrorBoundary><MedicinesPage /></ErrorBoundary>}
+        {page === "records"    && <ErrorBoundary><RecordsPage referrals={referrals} visits={visits} setReferrals={setReferrals} setVisits={setVisits} /></ErrorBoundary>}
+        {page === "supervisor" && ["Supervisor", "Admin"].includes(role) && <ErrorBoundary><SupervisorView /></ErrorBoundary>}
+        {page === "admin"      && role === "Admin" && <ErrorBoundary><AdminPanel /></ErrorBoundary>}
       </main>
       <BottomNav page={page} setPage={setPage} role={role} />
     </div>
