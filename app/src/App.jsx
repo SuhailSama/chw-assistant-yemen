@@ -104,7 +104,7 @@ export default function App() {
       <Header isOnline={isOnline} user={user} logout={logout} />
       <main className="flex-1 overflow-y-auto pb-24 px-4 py-5 space-y-4">
         {page === "home"       && <ErrorBoundary><HomePage user={user} visits={visits} referrals={referrals} setPage={setPage} pending={pending} /></ErrorBoundary>}
-        {page === "diagnosis"  && <ErrorBoundary><DiagnosisPage isOnline={isOnline} setReferrals={setReferrals} setVisits={setVisits} setPage={setPage} enqueue={enqueue} pending={pending} /></ErrorBoundary>}
+        {page === "diagnosis"  && <ErrorBoundary><DiagnosisPage isOnline={isOnline} visits={visits} referrals={referrals} setReferrals={setReferrals} setVisits={setVisits} setPage={setPage} enqueue={enqueue} pending={pending} /></ErrorBoundary>}
         {page === "education"  && <ErrorBoundary><EducationPage /></ErrorBoundary>}
         {page === "medicines"  && <ErrorBoundary><MedicinesPage /></ErrorBoundary>}
         {page === "records"    && <ErrorBoundary><RecordsPage referrals={referrals} visits={visits} setReferrals={setReferrals} setVisits={setVisits} /></ErrorBoundary>}

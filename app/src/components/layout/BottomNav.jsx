@@ -21,8 +21,13 @@ export default function BottomNav({ page, setPage, role, pending = [] }) {
           onClick={() => setPage(item.id)}
           className={`flex-1 flex flex-col items-center py-3 gap-0.5 transition-all active:scale-90 ${page === item.id ? "text-primary" : "text-on-surface-variant/50"}`}
         >
-          <div className={`flex items-center justify-center rounded-2xl transition-all ${page === item.id ? "bg-primary-light px-3 py-1" : "px-3 py-1"}`}>
+          <div className={`relative flex items-center justify-center rounded-2xl transition-all ${page === item.id ? "bg-primary-light px-3 py-1" : "px-3 py-1"}`}>
             <span className="text-lg leading-none">{item.icon}</span>
+            {item.id === "diagnosis" && pending.length > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center leading-none">
+                {pending.length > 9 ? "9+" : pending.length}
+              </span>
+            )}
           </div>
           <span className={`text-[10px] leading-none mt-0.5 ${page === item.id ? "font-black" : "font-medium"}`}>{item.label}</span>
         </button>
