@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
-import { fetchAuthSession } from "aws-amplify/auth";
+import { callFunction } from "./auth/supabaseClient";
 import { Input, ConfirmDialog } from "./components/ui";
 
-const API = import.meta.env.VITE_LAMBDA_URL.replace("/v1/messages", "");
 const GROUPS = ["CHW", "Supervisor", "Admin"];
 
 const GROUP_COLORS = {
@@ -16,12 +15,6 @@ const STATUS_COLORS = {
   CONFIRMED:         "bg-green-100 text-green-700",
   FORCE_CHANGE_PASSWORD: "bg-orange-100 text-orange-700",
 };
-
-async function authHeader() {
-  const session = await fetchAuthSession();
-  const token = session.tokens?.idToken?.toString();
-  return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-}
 
 export default function AdminPanel() {
   const [users, setUsers]         = useState([]);
@@ -40,9 +33,7 @@ export default function AdminPanel() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`${API}/admin/users`, { headers: await authHeader() });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const data = await callFunction("admin-users", { action: "list" });
       setUsers(data.users);
     } catch (err) {
       setError(err.message);
@@ -60,13 +51,7 @@ export default function AdminPanel() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const res = await fetch(`${API}/admin/users`, {
-        method: "POST",
-        headers: await authHeader(),
-        body: JSON.stringify(form),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const data = await callFunction("admin-users", { action: "create", ...form });
       showToast(data.message);
       setShowForm(false);
       setForm({ username: "", tempPassword: "", group: "CHW" });
@@ -78,16 +63,10 @@ export default function AdminPanel() {
     }
   }
 
-  async function changeGroup(username, newGroup, oldGroup) {
+  async function changeGroup(username, newGroup) {
     setBusyUsers(prev => new Set([...prev, username]));
     try {
-      const res = await fetch(`${API}/admin/users/${encodeURIComponent(username)}/group`, {
-        method: "PUT",
-        headers: await authHeader(),
-        body: JSON.stringify({ newGroup, oldGroup }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const data = await callFunction("admin-users", { action: "set-group", username, newGroup });
       showToast(data.message);
       setUsers(prev => prev.map(u => u.username === username ? { ...u, group: newGroup } : u));
     } catch (err) {
@@ -100,13 +79,7 @@ export default function AdminPanel() {
   async function toggleUser(username, enabled) {
     setBusyUsers(prev => new Set([...prev, username]));
     try {
-      const res = await fetch(`${API}/admin/users/${encodeURIComponent(username)}/toggle`, {
-        method: "PUT",
-        headers: await authHeader(),
-        body: JSON.stringify({ enabled }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const data = await callFunction("admin-users", { action: "toggle", username, enabled });
       showToast(data.message);
       setUsers(prev => prev.map(u => u.username === username ? { ...u, enabled: !enabled } : u));
     } catch (err) {
@@ -223,7 +196,7 @@ export default function AdminPanel() {
                   <select
                     value={u.group}
                     disabled={busyUsers.has(u.username)}
-                    onChange={e => changeGroup(u.username, e.target.value, u.group)}
+                    onChange={e => changeGroup(u.username, e.target.value)}
                     className="text-xs border border-outline-variant rounded-lg px-2 py-1.5 bg-white text-on-surface focus:outline-none focus:border-primary disabled:opacity-50"
                   >
                     {GROUPS.map(g => <option key={g} value={g}>{g}</option>)}

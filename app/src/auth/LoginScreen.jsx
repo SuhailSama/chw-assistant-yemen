@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { signIn, confirmSignIn } from 'aws-amplify/auth';
+import { supabase, usernameToEmail, callFunction } from './supabaseClient';
 
 // LoginScreen handles two states:
 // 1. Normal login (username + password)
-// 2. Force-change-password (Cognito requires this on first login for admin-created accounts)
-export default function LoginScreen({ onLogin }) {
-  const [step, setStep]         = useState('login'); // 'login' | 'new-password'
+// 2. Force-change-password (required on first login for admin-created accounts)
+export default function LoginScreen({ onLogin, forceNewPassword = false }) {
+  const [step, setStep]         = useState(forceNewPassword ? 'new-password' : 'login'); // 'login' | 'new-password'
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [newPass, setNewPass]   = useState('');
@@ -17,15 +17,19 @@ export default function LoginScreen({ onLogin }) {
     setError('');
     setLoading(true);
     try {
-      const result = await signIn({ username: username.trim(), password });
-      if (result.nextStep?.signInStep === 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED') {
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email: usernameToEmail(username),
+        password,
+      });
+      if (signInError) throw signInError;
+      if (data.user?.app_metadata?.must_change_password) {
         // Admin created this account with a temp password — user must set their own
         setStep('new-password');
-      } else if (result.isSignedIn) {
+      } else {
         onLogin();
       }
     } catch (err) {
-      setError(getArabicError(err.name));
+      setError(getArabicError(err));
     } finally {
       setLoading(false);
     }
@@ -36,10 +40,15 @@ export default function LoginScreen({ onLogin }) {
     setError('');
     setLoading(true);
     try {
-      const result = await confirmSignIn({ challengeResponse: newPass });
-      if (result.isSignedIn) onLogin();
+      const { data } = await supabase.auth.getSession();
+      const email = data?.session?.user?.email;
+      await callFunction('admin-users', { action: 'set-password', newPassword: newPass });
+      // Sign in again so the session token no longer carries the temp-password flag
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password: newPass });
+      if (signInError) throw signInError;
+      onLogin();
     } catch (err) {
-      setError(getArabicError(err.name));
+      setError(err.code || err.status ? getArabicError(err) : (err.message || getArabicError(err)));
     } finally {
       setLoading(false);
     }
@@ -143,16 +152,17 @@ export default function LoginScreen({ onLogin }) {
   );
 }
 
-// Translate Cognito error codes to Arabic
-function getArabicError(name) {
+// Translate Supabase Auth errors to Arabic
+function getArabicError(err) {
   const map = {
-    NotAuthorizedException:      'اسم المستخدم أو كلمة المرور غير صحيحة',
-    UserNotFoundException:        'هذا المستخدم غير موجود',
-    UserNotConfirmedException:    'الحساب لم يُفعَّل بعد — تواصل مع المشرف',
-    PasswordResetRequiredException: 'كلمة المرور منتهية — تواصل مع المشرف',
-    TooManyRequestsException:    'محاولات كثيرة جداً — انتظر دقيقة وحاول مجدداً',
-    InvalidPasswordException:    'كلمة المرور ضعيفة — يجب 8 أحرف على الأقل وتشمل أرقاماً',
-    LimitExceededException:      'تجاوزت عدد المحاولات المسموح بها — حاول لاحقاً',
+    invalid_credentials:        'اسم المستخدم أو كلمة المرور غير صحيحة',
+    user_banned:                'الحساب معطّل — تواصل مع المشرف',
+    email_not_confirmed:        'الحساب لم يُفعَّل بعد — تواصل مع المشرف',
+    over_request_rate_limit:    'محاولات كثيرة جداً — انتظر دقيقة وحاول مجدداً',
+    weak_password:              'كلمة المرور ضعيفة — يجب 8 أحرف على الأقل وتشمل أرقاماً',
   };
-  return map[name] || 'خطأ غير متوقع — حاول مرة أخرى';
+  if (map[err?.code]) return map[err.code];
+  if (err?.status === 429) return map.over_request_rate_limit;
+  if (!navigator.onLine) return 'لا يوجد اتصال بالإنترنت — تسجيل الدخول يتطلب اتصالاً';
+  return 'خطأ غير متوقع — حاول مرة أخرى';
 }

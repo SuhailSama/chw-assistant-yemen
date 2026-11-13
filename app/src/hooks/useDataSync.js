@@ -1,101 +1,98 @@
-import { useState, useEffect, useCallback } from "react";
-import { fetchAuthSession } from "aws-amplify/auth";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { supabase } from "../auth/supabaseClient";
 
-const LAMBDA_URL = import.meta.env.VITE_LAMBDA_URL?.replace("/prod/v1/messages", "/prod");
+// Local-first records. Every record lives in localStorage (per user) and is
+// pushed to Supabase when a connection is available. Each record gets a
+// client-generated id, so retrying a push can never create a duplicate.
 
-const getToken = async () => {
-  try {
-    const session = await fetchAuthSession();
-    return session.tokens?.idToken?.toString() || null;
-  } catch { return null; }
+const storageKey = (table, uid) => `chw_${table}:${uid}`;
+
+const load = (table, uid) => {
+  try { return JSON.parse(localStorage.getItem(storageKey(table, uid)) || "[]"); } catch { return []; }
 };
 
-const authFetch = async (path, options = {}) => {
-  const token = await getToken();
-  const res = await fetch(`${LAMBDA_URL}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers || {}),
-    },
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
-};
+const newId = () =>
+  crypto.randomUUID?.() ||
+  "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c =>
+    (+c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (+c / 4)))).toString(16));
 
-export function useDataSync() {
-  const [visits, setVisits] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("chw_visits") || "[]"); } catch { return []; }
-  });
-  const [referrals, setReferrals] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("chw_referrals") || "[]"); } catch { return []; }
-  });
-  const [loading, setLoading] = useState(false);
-  const [syncing, setSyncing] = useState(false);
+const stamp = (record) => (record.id ? record : { ...record, id: newId(), synced: false });
 
-  // Fetch from API on mount
+function useSyncedTable(table, uid) {
+  const [state, setState] = useState({ uid: null, list: [] });
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const busy = useRef(false);
+
+  // Load this user's local records when the signed-in user changes
   useEffect(() => {
-    if (!LAMBDA_URL) return;
-    setLoading(true);
-    Promise.all([
-      authFetch("/api/visits").then(d => { setVisits(d.visits || []); localStorage.setItem("chw_visits", JSON.stringify(d.visits || [])); }),
-      authFetch("/api/referrals").then(d => { setReferrals(d.referrals || []); localStorage.setItem("chw_referrals", JSON.stringify(d.referrals || [])); }),
-    ])
-      .catch(() => { /* fall back to localStorage data already in state */ })
-      .finally(() => setLoading(false));
-  }, []);
+    setState({ uid, list: uid ? load(table, uid) : [] });
+  }, [table, uid]);
 
   // Persist to localStorage whenever state changes
-  useEffect(() => { localStorage.setItem("chw_visits", JSON.stringify(visits)); }, [visits]);
-  useEffect(() => { localStorage.setItem("chw_referrals", JSON.stringify(referrals)); }, [referrals]);
-
-  const addVisit = useCallback(async (data) => {
-    const optimistic = { ...data, id: `local-${Date.now()}` };
-    setVisits(prev => [optimistic, ...prev]);
-    setSyncing(true);
-    try {
-      const result = await authFetch("/api/visits", { method: "POST", body: JSON.stringify(data) });
-      setVisits(prev => prev.map(v => v.id === optimistic.id ? { ...optimistic, visitId: result.visitId } : v));
-    } catch {
-      // Keep optimistic record; add to sync queue for retry
-      const queue = JSON.parse(localStorage.getItem("chw_sync_queue") || "[]");
-      queue.push({ type: "visit", data, timestamp: Date.now() });
-      localStorage.setItem("chw_sync_queue", JSON.stringify(queue));
-    } finally { setSyncing(false); }
-  }, []);
-
-  const addReferral = useCallback(async (data) => {
-    const optimistic = { ...data, id: `local-${Date.now()}` };
-    setReferrals(prev => [optimistic, ...prev]);
-    setSyncing(true);
-    try {
-      const result = await authFetch("/api/referrals", { method: "POST", body: JSON.stringify(data) });
-      setReferrals(prev => prev.map(r => r.id === optimistic.id ? { ...optimistic, referralId: result.referralId } : r));
-    } catch {
-      const queue = JSON.parse(localStorage.getItem("chw_sync_queue") || "[]");
-      queue.push({ type: "referral", data, timestamp: Date.now() });
-      localStorage.setItem("chw_sync_queue", JSON.stringify(queue));
-    } finally { setSyncing(false); }
-  }, []);
-
-  // Process sync queue when back online
   useEffect(() => {
-    const processQueue = async () => {
-      const queue = JSON.parse(localStorage.getItem("chw_sync_queue") || "[]");
-      if (!queue.length) return;
-      const remaining = [];
-      for (const item of queue) {
-        try {
-          if (item.type === "visit") await authFetch("/api/visits", { method: "POST", body: JSON.stringify(item.data) });
-          else await authFetch("/api/referrals", { method: "POST", body: JSON.stringify(item.data) });
-        } catch { remaining.push(item); }
-      }
-      localStorage.setItem("chw_sync_queue", JSON.stringify(remaining));
-    };
-    window.addEventListener("online", processQueue);
-    return () => window.removeEventListener("online", processQueue);
+    if (state.uid) localStorage.setItem(storageKey(table, state.uid), JSON.stringify(state.list));
+  }, [table, state]);
+
+  const setList = useCallback((updater) => {
+    setState(prev => {
+      if (!prev.uid) return prev;
+      const next = typeof updater === "function" ? updater(prev.list) : updater;
+      return { uid: prev.uid, list: next.map(stamp) };
+    });
   }, []);
 
-  return { visits, setVisits, referrals, setReferrals, addVisit, addReferral, loading, syncing };
+  const sync = useCallback(async () => {
+    const { uid: owner, list } = stateRef.current;
+    if (!owner || !navigator.onLine || busy.current) return;
+    busy.current = true;
+    try {
+      // Push records the server has not seen yet
+      const pending = list.filter(r => !r.synced);
+      if (pending.length) {
+        const rows = pending.map(({ id, synced: _synced, ...data }) => ({ id, data }));
+        const { error } = await supabase.from(table).upsert(rows, { onConflict: "id", ignoreDuplicates: true });
+        if (error) return; // keep them pending; retried on reconnect or next launch
+        const done = new Set(pending.map(r => r.id));
+        setState(prev => prev.uid !== owner ? prev : {
+          uid: owner,
+          list: prev.list.map(r => done.has(r.id) ? { ...r, synced: true } : r),
+        });
+      }
+      // Pull this user's records (e.g. entered on another device)
+      const { data, error } = await supabase
+        .from(table).select("id, data").eq("chw_id", owner)
+        .order("created_at", { ascending: false }).limit(500);
+      if (error || !data) return;
+      const remote = data.map(row => ({ ...row.data, id: row.id, synced: true }));
+      const remoteIds = new Set(remote.map(r => r.id));
+      setState(prev => prev.uid !== owner ? prev : {
+        uid: owner,
+        list: [...prev.list.filter(r => !remoteIds.has(r.id)), ...remote],
+      });
+    } finally { busy.current = false; }
+  }, [table]);
+
+  const list = state.uid === uid ? state.list : [];
+  const pendingCount = list.filter(r => !r.synced).length;
+
+  // Sync on login, when new records are added, and when back online
+  useEffect(() => { if (state.uid) sync(); }, [state.uid, pendingCount, sync]);
+  useEffect(() => {
+    window.addEventListener("online", sync);
+    return () => window.removeEventListener("online", sync);
+  }, [sync]);
+
+  return [list, setList];
+}
+
+export function useDataSync(user) {
+  const uid = user?.id || null;
+  const [visits, setVisits] = useSyncedTable("visits", uid);
+  const [referrals, setReferrals] = useSyncedTable("referrals", uid);
+
+  const addVisit = useCallback((data) => setVisits(prev => [data, ...prev]), [setVisits]);
+  const addReferral = useCallback((data) => setReferrals(prev => [data, ...prev]), [setReferrals]);
+
+  return { visits, setVisits, referrals, setReferrals, addVisit, addReferral };
 }

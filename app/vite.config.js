@@ -3,7 +3,9 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import tailwindcss from '@tailwindcss/vite'
 
+// GitHub Pages serves the app from /<repo>/, so the base path is set at build time.
 export default defineConfig({
+  base: process.env.VITE_BASE || '/',
   plugins: [
     tailwindcss(),
     react(),
@@ -18,14 +20,16 @@ export default defineConfig({
         display: "standalone",
         dir: "rtl",
         lang: "ar",
+        start_url: ".",
+        scope: ".",
         icons: [
           {
-            src: '/icon-192.png',
+            src: 'icon-192.png',
             sizes: '192x192',
             type: 'image/png'
           },
           {
-            src: '/icon-512.png',
+            src: 'icon-512.png',
             sizes: '512x512',
             type: 'image/png'
           }

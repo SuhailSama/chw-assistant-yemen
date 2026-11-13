@@ -1,13 +1,11 @@
 import { useState } from "react";
 import DOMPurify from "dompurify";
-import { fetchAuthSession } from "aws-amplify/auth";
+import { callFunction } from "../auth/supabaseClient";
 import { Input, TextArea, Card, SectionTitle } from "../components/ui";
 import { useOfflineQueue } from "../hooks/useOfflineQueue";
 import { getPatientHistory } from "./RecordsPage";
 import { URGENCY } from "../constants/urgency";
 
-const LAMBDA_URL = import.meta.env.VITE_LAMBDA_URL;
-const MODEL = "gemini-2.5-flash-lite";
 const today = () => new Date().toLocaleDateString("ar-SA");
 
 export default function DiagnosisPage({ isOnline, visits = [], referrals = [], setReferrals, setVisits, setPage, enqueue, pending }) {
@@ -123,28 +121,26 @@ export default function DiagnosisPage({ isOnline, visits = [], referrals = [], s
 
 ══════════════════════════════════
 بيانات المريض:
-- الاسم: ${patient.name} | العمر: ${patient.age} | الجنس: ${patient.sex === "male" ? "ذكر" : "أنثى"}
+- العمر: ${patient.age} | الجنس: ${patient.sex === "male" ? "ذكر" : "أنثى"}
 - الشكوى الرئيسية: ${patient.complaint}
 - الأعراض: ${patient.symptoms}
 - المدة: ${patient.duration || "غير محددة"}
 - الحرارة: ${patient.temp || "—"}°C | النبض: ${patient.pulse || "—"} ن/د | ضغط الدم: ${patient.bp || "—"}`;
 
-  const fetchWithRetry = async (provider, attempts = 2) => {
+  // The patient's name is deliberately left out of the prompt: it has no
+  // clinical value and should not leave the device for an AI provider.
+  const fetchWithRetry = async (attempts = 2) => {
     for (let i = 0; i < attempts; i++) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
       try {
-        const session = await fetchAuthSession();
-        const token = session.tokens?.idToken?.toString();
-        const res = await fetch(LAMBDA_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
-          body: JSON.stringify({ provider, model: MODEL, max_tokens: 1000, messages: [{ role: "user", content: buildPrompt() }] }),
-          signal: controller.signal,
-        });
+        const data = await callFunction(
+          "diagnose",
+          { messages: [{ role: "user", content: buildPrompt() }] },
+          { signal: controller.signal },
+        );
         clearTimeout(timeoutId);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return await res.json();
+        return data;
       } catch (err) {
         clearTimeout(timeoutId);
         if (i === attempts - 1) throw err;
@@ -172,16 +168,10 @@ export default function DiagnosisPage({ isOnline, visits = [], referrals = [], s
     setLoading(true);
     setResult(null);
     try {
-      const data = await fetchWithRetry("arabicai");
-      setResult(data.content?.find(b => b.type === "text")?.text || "حدث خطأ في استجابة Arabic.ai.");
+      const data = await fetchWithRetry();
+      setResult(data.content?.find(b => b.type === "text")?.text || "حدث خطأ في استجابة خدمة التشخيص.");
     } catch (err) {
-      console.warn("Retrying with Anthropic...", err);
-      try {
-        const data = await fetchWithRetry("anthropic");
-        setResult(data.content?.find(b => b.type === "text")?.text || "حدث خطأ في استجابة Anthropic.");
-      } catch (err2) {
-        setResult(`❌ ${err2.message === 'The user aborted a request.' ? 'انتهت المهلة (15 ثانية)' : err2.message || 'خطأ غير معروف'}. تحقق من الاتصال.`);
-      }
+      setResult(`❌ ${err.name === 'AbortError' ? 'انتهت المهلة (15 ثانية)' : err.message || 'خطأ غير معروف'}. تحقق من الاتصال.`);
     }
     setLoading(false);
   };

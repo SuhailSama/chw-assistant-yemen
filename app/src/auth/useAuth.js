@@ -1,49 +1,81 @@
-import { useState, useEffect } from 'react';
-import { getCurrentUser, fetchAuthSession, signOut } from 'aws-amplify/auth';
+import { useState, useEffect, useCallback } from 'react';
+import { supabase } from './supabaseClient';
+
+const ROLES = ['CHW', 'Supervisor', 'Admin'];
+const IDENTITY_KEY = 'chw_identity';
+
+function identityFrom(session) {
+  const meta = session.user.app_metadata || {};
+  return {
+    id: session.user.id,
+    username: meta.username || (session.user.email || '').split('@')[0],
+    role: ROLES.includes(meta.role) ? meta.role : null,
+    mustChangePassword: !!meta.must_change_password,
+  };
+}
+
+const readCachedIdentity = () => {
+  try { return JSON.parse(localStorage.getItem(IDENTITY_KEY) || 'null'); } catch { return null; }
+};
 
 // useAuth — tells the app who is logged in and what role they have
-// Returns: { user, role, loading, logout }
+// Returns: { user, role, mustChangePassword, loading, logout, recheckSession }
 //
 // HOW OFFLINE WORKS:
-// Amplify caches the JWT tokens in localStorage automatically.
-// On page load it checks the cached tokens first — if valid, the user
-// is considered logged in without any network request.
-// The refresh token lasts 30 days, so CHWs stay logged in for a month.
+// Supabase keeps the session in localStorage and refreshes it silently.
+// The access token lasts an hour, so a CHW who has been offline longer
+// cannot refresh it. In that case we fall back to the identity cached at
+// the last successful check, so the app stays usable in the field; the
+// server still rejects anything sent without a valid token.
 export function useAuth() {
-  const [user, setUser]       = useState(null);   // { username }
-  const [role, setRole]       = useState(null);   // 'CHW' | 'Supervisor' | 'Admin' | null
-  const [loading, setLoading] = useState(true);
+  const [identity, setIdentity] = useState(null);
+  const [loading, setLoading]   = useState(true);
 
-  useEffect(() => {
-    checkSession();
-  }, []);
-
-  async function checkSession() {
+  const checkSession = useCallback(async () => {
     try {
-      const currentUser = await getCurrentUser();
-      const session     = await fetchAuthSession();
-      const groups      = session.tokens?.idToken?.payload?.['cognito:groups'] || [];
-      // Highest role wins (Admin > Supervisor > CHW)
-      const userRole = groups.includes('Admin')      ? 'Admin'
-                     : groups.includes('Supervisor') ? 'Supervisor'
-                     : groups.includes('CHW')        ? 'CHW'
-                     : null;
-      setUser({ username: currentUser.username });
-      setRole(userRole);
+      const { data } = await supabase.auth.getSession();
+      if (data?.session) {
+        const next = identityFrom(data.session);
+        localStorage.setItem(IDENTITY_KEY, JSON.stringify(next));
+        setIdentity(next);
+      } else if (!navigator.onLine && readCachedIdentity()) {
+        setIdentity(readCachedIdentity());
+      } else {
+        setIdentity(null);
+      }
     } catch {
-      // No session — user is logged out
-      setUser(null);
-      setRole(null);
+      setIdentity(navigator.onLine ? null : readCachedIdentity());
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    checkSession();
+    const { data } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') {
+        localStorage.removeItem(IDENTITY_KEY);
+        setIdentity(null);
+      } else if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+        checkSession();
+      }
+    });
+    return () => data.subscription.unsubscribe();
+  }, [checkSession]);
 
   async function logout() {
-    await signOut();
-    setUser(null);
-    setRole(null);
+    localStorage.removeItem(IDENTITY_KEY);
+    setIdentity(null);
+    // Local scope: works offline and leaves the user's other devices signed in.
+    await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
   }
 
-  return { user, role, loading, logout, recheckSession: checkSession };
+  return {
+    user: identity ? { id: identity.id, username: identity.username } : null,
+    role: identity?.role || null,
+    mustChangePassword: !!identity?.mustChangePassword,
+    loading,
+    logout,
+    recheckSession: checkSession,
+  };
 }

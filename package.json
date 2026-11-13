@@ -1,5 +1,5 @@
 {
   "scripts": {
-    "build:lambda": "cd lambda && zip -r ../lambda.zip ."
+    "build": "npm --prefix app ci && npm --prefix app run build"
   }
 }

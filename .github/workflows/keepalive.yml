@@ -1,0 +1,26 @@
+# Supabase pauses free projects after 7 days without database activity.
+# This pings the database twice a week so a quiet spell in the field does
+# not take the app offline.
+#
+# Note: GitHub disables scheduled workflows after 60 days with no commits
+# to the repo. If that happens, re-enable it from the Actions tab.
+
+name: Supabase Keep-Alive
+
+on:
+  schedule:
+    - cron: "17 5 * * 1,4"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping database
+        run: |
+          curl --fail --silent --show-error --max-time 30 \
+            -X POST "https://ovubfucmswpauuybbcif.supabase.co/rest/v1/rpc/ping" \
+            -H "apikey: sb_publishable_Q62pevdn6MwlZQ8BuplWMQ_sgy-tKz0" \
+            -H "Content-Type: application/json" -d '{}'

@@ -4,30 +4,26 @@ An Arabic-language clinical decision support tool for community health workers i
 
 ## Features
 
-- AI-powered differential diagnosis using Anthropic Claude and Google Gemini
+- AI-assisted differential diagnosis (Google Gemini, called through a server-side proxy)
 - Arabic-language interface designed for CHW workflows
-- Offline-capable PWA (works without internet after first load)
-- Role-based access: CHW, Supervisor, and Admin roles via Cognito
+- Offline-capable PWA: records are saved on the phone first and synced when a connection returns
+- Role-based access: CHW, Supervisor, and Admin
 - Admin panel for user management (create, assign roles, enable/disable)
 - Supervisor dashboard for oversight
-- JWT-authenticated API — all requests verified server-side
+- Runs entirely on free tiers with no payment method on file
 
 ## Architecture
 
 ```
-Browser (React PWA)
+Browser (React PWA, hosted on GitHub Pages)
     │
     ▼
-AWS API Gateway (eu-west-1)
-    │
-    ▼
-AWS Lambda — chw-assistant-proxy (Node.js 22, eu-west-1)
-    ├── AI Proxy → Anthropic API / Google Gemini API
-    └── Admin Routes → AWS Cognito (me-south-1)
-         └── API keys stored in SSM Parameter Store (me-south-1)
-
-Auth: AWS Cognito User Pool (me-south-1)
-CDN:  S3 + CloudFront
+Supabase project (free plan, eu-central-1)
+    ├── Auth            username + password, role stored in the JWT (app_metadata)
+    ├── Postgres        visits + referrals, protected by row-level security
+    └── Edge Functions
+         ├── diagnose     → Google Gemini API (key stays server-side)
+         └── admin-users  → create users, change roles, enable/disable
 ```
 
 ## Tech Stack
@@ -35,13 +31,11 @@ CDN:  S3 + CloudFront
 | Layer | Technology |
 |-------|-----------|
 | Frontend | React 18, Vite 6, Tailwind CSS 4 |
-| Auth | AWS Amplify v6, AWS Cognito |
-| AI | Anthropic Claude, Google Gemini (via Lambda proxy) |
-| Backend | AWS Lambda (Node.js 22), API Gateway HTTP API |
-| Config | AWS SSM Parameter Store |
-| Infrastructure | Terraform |
+| Hosting | GitHub Pages |
+| Auth + Database | Supabase Auth, Postgres with row-level security |
+| AI | Google Gemini Flash-Lite (via Supabase Edge Function) |
 | CI/CD | GitHub Actions |
-| Security | DOMPurify (XSS), aws-jwt-verify (JWT validation) |
+| Security | DOMPurify (XSS), row-level security, server-side role checks |
 
 ## Project Structure
 
@@ -49,98 +43,61 @@ CDN:  S3 + CloudFront
 chw-assistant-yemen/
 ├── app/                    # React frontend (Vite + Tailwind)
 │   ├── src/
-│   │   ├── App.jsx         # Main application and AI interaction
+│   │   ├── App.jsx
 │   │   ├── AdminPanel.jsx  # User management UI
 │   │   ├── SupervisorView.jsx
-│   │   ├── auth/           # Cognito auth (Amplify v6)
+│   │   ├── auth/           # Supabase client, login, session
+│   │   ├── hooks/          # Local-first record sync, offline queue
 │   │   └── data/           # Conditions and medicines reference data
 │   ├── .env.example
 │   └── vite.config.js
-├── lambda/                 # Lambda function code
-│   ├── index.js            # AI proxy + admin API handler
-│   └── package.json
-├── infra/                  # Terraform infrastructure
-│   └── main.tf
+├── supabase/
+│   ├── migrations/         # Schema + row-level security policies
+│   └── functions/          # diagnose, admin-users
 └── .github/workflows/
-    └── deploy.yml          # CI/CD pipeline
+    ├── deploy.yml          # Build and publish to GitHub Pages
+    └── keepalive.yml       # Stops the free Supabase project from pausing
 ```
 
 ## Local Development
 
-**Prerequisites:** Node.js 20+, AWS CLI configured
-
-1. Clone the repo and install frontend dependencies:
-   ```bash
-   cd app
-   npm install
-   ```
-
-2. Copy the env example and fill in your values:
-   ```bash
-   cp .env.example .env
-   ```
-
-   | Variable | Description |
-   |----------|-------------|
-   | `VITE_LAMBDA_URL` | API Gateway endpoint URL |
-   | `VITE_COGNITO_USER_POOL_ID` | Cognito User Pool ID |
-   | `VITE_COGNITO_CLIENT_ID` | Cognito App Client ID |
-
-3. Start the dev server:
-   ```bash
-   npm run dev
-   ```
-
-## Deployment
-
-### Infrastructure (first time only)
+**Prerequisites:** Node.js 20+
 
 ```bash
-cd infra
-terraform init
-terraform apply
-```
-
-### CI/CD (on push to `main`)
-
-The GitHub Actions pipeline in [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) automatically:
-1. Builds the React app with production env vars
-2. Syncs the build to S3 and invalidates CloudFront
-3. Zips and deploys the Lambda function
-
-**Required GitHub Secrets:**
-
-| Secret | Description |
-|--------|-------------|
-| `AWS_ACCESS_KEY_ID` | AWS credentials |
-| `AWS_SECRET_ACCESS_KEY` | AWS credentials |
-| `AWS_REGION` | Deployment region (eu-west-1) |
-| `S3_BUCKET_NAME` | Frontend hosting bucket |
-| `CLOUDFRONT_DISTRIBUTION_ID` | CDN distribution |
-| `LAMBDA_FUNCTION_NAME` | Lambda function name |
-| `VITE_LAMBDA_URL` | API Gateway URL injected at build time |
-| `VITE_COGNITO_USER_POOL_ID` | Cognito pool ID |
-| `VITE_COGNITO_CLIENT_ID` | Cognito client ID |
-
-### Manual Lambda deploy
-
-```bash
-cd lambda
+cd app
 npm install
-zip -r ../lambda.zip .
-aws lambda update-function-code \
-  --function-name chw-assistant-proxy \
-  --zip-file fileb://../lambda.zip \
-  --region eu-west-1
+cp .env.example .env   # fill in the two values below
+npm run dev
 ```
-
-## Lambda Environment Variables
 
 | Variable | Description |
 |----------|-------------|
-| `COGNITO_USER_POOL_ID` | Cognito User Pool ID for auth verification |
-| `COGNITO_CLIENT_ID` | Cognito App Client ID for JWT validation |
-| `ANTHROPIC_KEY_PARAM` | SSM parameter path for Anthropic API key |
-| `GEMINI_KEY_PARAM` | SSM parameter path for Gemini API key |
+| `VITE_SUPABASE_URL` | Supabase project URL |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase publishable key (public, safe in the browser) |
 
-API keys are stored as SecureString parameters in SSM Parameter Store (me-south-1) and fetched at runtime.
+## Deployment
+
+Pushing to `main` builds the app and publishes it to GitHub Pages. See
+[`DEPLOYMENT_CHECKLIST.md`](DEPLOYMENT_CHECKLIST.md) for the one-time setup.
+
+Backend changes are applied to Supabase separately:
+
+```bash
+supabase db push                       # apply supabase/migrations
+supabase functions deploy diagnose --no-verify-jwt
+supabase functions deploy admin-users --no-verify-jwt
+```
+
+Both functions authenticate the caller themselves, so platform JWT verification is off.
+
+## Edge Function Secrets
+
+| Secret | Description |
+|--------|-------------|
+| `GEMINI_API_KEY` | Google AI Studio API key. Required for diagnosis. |
+| `GEMINI_MODEL` | Optional. Defaults to `gemini-3.5-flash-lite`. |
+
+## Free-Tier Limits to Know
+
+- **Supabase** pauses a free project after 7 days without activity and keeps no backups. `keepalive.yml` handles the first; export data regularly for the second.
+- **Gemini free tier** is rate-limited per day, and Google may use free-tier prompts to improve its products. The app never sends the patient's name to the AI.

@@ -17,10 +17,10 @@ import { useOfflineQueue } from "./hooks/useOfflineQueue";
 const PROTECTED_TABS = ["diagnosis", "records", "admin", "supervisor"];
 
 export default function App() {
-  const { user, role, loading: authLoading, logout, recheckSession } = useAuth();
+  const { user, role, mustChangePassword, loading: authLoading, logout, recheckSession } = useAuth();
   const [page, setPage] = useState("disclaimer");
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const { visits, setVisits, referrals, setReferrals, addVisit, addReferral } = useDataSync();
+  const { visits, setVisits, referrals, setReferrals, addVisit, addReferral } = useDataSync(user);
   const { enqueue, pending, processQueue } = useOfflineQueue();
 
   useEffect(() => {
@@ -54,8 +54,8 @@ export default function App() {
     </div>
   );
 
-  if (PROTECTED_TABS.includes(page) && !user) return (
-    <LoginScreen onLogin={() => { recheckSession(); }} />
+  if ((PROTECTED_TABS.includes(page) && !user) || (user && mustChangePassword)) return (
+    <LoginScreen forceNewPassword={!!user && mustChangePassword} onLogin={() => { recheckSession(); }} />
   );
 
   if (page === "disclaimer") return (

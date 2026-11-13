@@ -1,28 +1,20 @@
 import { useState, useEffect } from "react";
-import { fetchAuthSession } from "aws-amplify/auth";
+import { supabase } from "./auth/supabaseClient";
 import { URGENCY } from "./constants/urgency";
 
-const LAMBDA_URL = import.meta.env.VITE_LAMBDA_URL?.replace("/prod/v1/messages", "/prod");
-
-async function getToken() {
-  try {
-    const session = await fetchAuthSession();
-    return session.tokens?.idToken?.toString() || null;
-  } catch { return null; }
-}
-
-async function authFetch(path, options = {}) {
-  const token = await getToken();
-  const res = await fetch(`${LAMBDA_URL}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers || {}),
-    },
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+// Row-level security lets Supervisors and Admins read every CHW's records.
+async function fetchAll(table) {
+  const { data, error } = await supabase
+    .from(table).select("id, chw_username, created_at, data")
+    .order("created_at", { ascending: false }).limit(1000);
+  if (error) throw error;
+  return data.map(row => ({
+    ...row.data,
+    id: row.id,
+    patientName: row.data?.name,
+    chw: row.chw_username,
+    date: row.created_at,
+  }));
 }
 
 function StatCard({ count, label }) {
@@ -102,30 +94,24 @@ export default function SupervisorView() {
 
   const [referrals, setReferrals] = useState([]);
   const [visits, setVisits] = useState([]);
-  const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (!LAMBDA_URL) return;
     setLoading(true);
     setError(null);
     Promise.all([
-      authFetch("/api/supervisor/summary").then(d => setSummary(d)).catch(() => {}),
-      authFetch("/api/visits?chw=all").then(d => setVisits(d.visits || [])).catch(() => {}),
-      authFetch("/api/referrals").then(d => setReferrals(d.referrals || [])).catch(() => {}),
+      fetchAll("visits").then(setVisits),
+      fetchAll("referrals").then(setReferrals),
     ])
       .catch(() => setError("تعذّر تحميل البيانات"))
       .finally(() => setLoading(false));
   }, []);
 
-  // Derive CHW list from summary byCHW keys, fall back to scanning records
-  const chwList = summary?.byCHW
-    ? Object.keys(summary.byCHW)
-    : [...new Set([
-        ...visits.map(v => v.chw).filter(Boolean),
-        ...referrals.map(r => r.chw).filter(Boolean),
-      ])];
+  const chwList = [...new Set([
+    ...visits.map(v => v.chw).filter(Boolean),
+    ...referrals.map(r => r.chw).filter(Boolean),
+  ])];
 
   const now = new Date();
 
